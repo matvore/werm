@@ -1703,6 +1703,9 @@ int main(int argc, char **argv)
 	argc--;
 	argv++;
 
+	/* Set $WERMVARDIR for subprocs if it's not manually specified. */
+	state_dir();
+
 	if (1 == argc) {
 		if (!strcmp("test",	*argv)) testmain();
 		if (!strcmp("/showenv",	*argv)) doshowenv();
