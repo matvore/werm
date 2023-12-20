@@ -136,7 +136,7 @@ This is not an officially supported Google product.
    terminate the shell as soon as the tab is closed or the connection is lost.
 
  * To open a persistent shell, use the `localhost:8090/attach` page. See
-   [ATTACH PAGE](#attach-page) for details.
+   [ATTACH PAGE](#attach-page) for details. [try this](#a-custom-link)
 
  * Rather than use the attach page to reconnect to a shell, you can also re-open
    the URL e.g. with a bookmark or Ctrl+Shift+T.
@@ -177,6 +177,7 @@ shortcuts:
 `native_to_mn` in `index.html` defines the complete mapping between
 mnemonics and the long-form name used by the JS Event API.
 
+<a name="a-custom-link"></a>
 ## BASIC USE
 
  * An ephemeral shell will terminate if you close the tab. You will create one
