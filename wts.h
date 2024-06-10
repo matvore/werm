@@ -4,6 +4,8 @@
  * license that can be found in the LICENSE file or at
  * https://developers.google.com/open-source/licenses/bsd */
 
+#include "tmconst"
+
 /* Name is based on Write To Subproc but this contains process_kbd state too.
  * We put this in a single struct so all logic state can be reset with a single
  * memset call. */

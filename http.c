@@ -8,6 +8,8 @@
 #include "outstreams.h"
 #include "shared.h"
 
+#include <time.h>
+#include <utime.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -17,15 +19,16 @@
 #include <openssl/sha.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
+#include <unistd.h>
 
-static char reqln[512], *reqcr;
+static char reqln[4096], *reqcr;
 static unsigned llen;
 
 static int readreqln(FILE *f)
 {
-	fgets(reqln, sizeof(reqln), f);
-	llen = strnlen(reqln, sizeof(reqln));
-	if (llen == sizeof(reqln) || llen < 2) return 0;
+	if (!fgets(reqln, sizeof(reqln), f)) return 0;
+	llen = strlen(reqln);
+	if (llen < 2) return 0;
 
 	if (reqln[--llen] != '\n' || reqln[--llen] != '\r') return 0;
 	reqln[llen] = 0;
@@ -74,11 +77,8 @@ static int hastok(const char *tk)
 }
 
 #define CHALLKEYLEN 16
-#define SHA1SZ 20
 
-/* Length is the expected length of base64-encoding the raw bytes of a
-   sha1 hash, including '=' padding, plus a null terminator. */
-static char acceptkey[29];
+static char acceptwskey[1 + B64LEN(SHA1SZ)];
 
 static int procwskeyhdr(const char *wskeyhdr, struct wrides *errout)
 {
@@ -104,6 +104,7 @@ static int procwskeyhdr(const char *wskeyhdr, struct wrides *errout)
 	if (!BIO_write_ex(bmem, "\n", 1, &writn)) goto dumperr;
 	if (writn != 1) goto dumperr;
 	if (!BIO_read_ex(b64, challkey, sizeof(challkey), &redn)) goto dumperr;
+
 	if (redn != CHALLKEYLEN) {
 		fdb_apnd(&respbuf, "challenge key wrong size\n", -1);
 		fdb_apnd(&respbuf, "  expected: ", -1);
@@ -119,6 +120,7 @@ static int procwskeyhdr(const char *wskeyhdr, struct wrides *errout)
 	   process. */
 	if (!EVP_DigestInit_ex(s1ctx, EVP_sha1(), 0))		goto dumperr;
 	if (!EVP_DigestUpdate(s1ctx, wskeyhdr, strlen(wskeyhdr))) goto dumperr;
+
 	if (!EVP_DigestUpdate(s1ctx, salt, strlen(salt)))	goto dumperr;
 	if (!EVP_DigestFinal_ex(s1ctx, binhasho, &binhashl))	goto dumperr;
 
@@ -126,12 +128,12 @@ static int procwskeyhdr(const char *wskeyhdr, struct wrides *errout)
 
 	if (!BIO_write_ex(b64, binhasho, binhashl, &writn)) goto dumperr;
 	if (writn != binhashl || 1 > BIO_flush(b64)) goto dumperr;
-	if (!BIO_read_ex(bmem, acceptkey, sizeof(acceptkey), &redn))
+	if (!BIO_read_ex(bmem, acceptwskey, sizeof(acceptwskey), &redn))
 		goto dumperr;
-	if (redn != sizeof(acceptkey)) goto dumperr;
+	if (redn != sizeof(acceptwskey)) goto dumperr;
 
 	/* Replace b64's guaranteed newline with null terminator */
-	acceptkey[sizeof(acceptkey)-1] = 0;
+	acceptwskey[sizeof(acceptwskey)-1] = 0;
 
 	goto cleanup;
 
@@ -156,26 +158,151 @@ cleanup:
 	return !ers;
 }
 
+static int fixedread(int fh, unsigned bytes, unsigned char *dest)
+{
+	int redn;
+	for (;;) {
+		if (!bytes) return 1;
+
+		redn = read(fh, dest, bytes);
+		if (!redn) return 0;
+		if (redn > 0) { dest += redn; bytes -= redn; continue; }
+		if (errno == EINTR) continue;
+		perror("reading file");
+		return 0;
+	}
+}
+
+void authn_state(Httpreq *rq, int doallow)
+{
+	struct fdbuf normpat = {0};
+	struct stat stb;
+	time_t now;
+	int chalh = -1, randh = -1, haschal = 0;
+	const char *sccr = rq->sescook;
+
+	rq->pendauth = 1;
+
+	fdb_apnd(&normpat, state_dir(), -1);
+	fdb_apnc(&normpat, '/');
+	fdb_apnd(&normpat, "auth.", -1);
+
+	for (;;) {
+		fdb_apnc(&normpat, *sccr == '/' ? '_' : *sccr);
+
+		/* Include null byte to terminate string */
+		if (!*sccr++) break;
+	}
+
+	if (0 > time(&now)) {
+		perror("get current time");
+		goto cleanup;
+	}
+
+	if (0 > stat((char *)normpat.bf, &stb)) {
+		if (errno != ENOENT) {
+			perror("stat authn file");
+			goto cleanup;
+		}
+	}
+	else
+		rq->pendauth = now - stb.st_mtime > 24 * 60 * 60;
+
+	if (!rq->pendauth && !doallow) goto cleanup;
+
+	if (doallow) {
+		mknod((char *)normpat.bf, S_IFREG | 0600, 0);
+		utime((char *)normpat.bf, &(struct utimbuf){ now, now });
+	}
+
+	normpat.len--;
+	fdb_apnd(&normpat, ".chal", -1);
+	fdb_apnc(&normpat, 0);
+
+	fprintf(stderr, "challenge file: %s\n", (char *)normpat.bf);
+	if (doallow) {
+		/* Challenge has already been used, so delete it so we make a
+		new one later. */
+		unlink((const char *)normpat.bf);
+		rq->pendauth = 0;
+		goto cleanup;
+	}
+
+	chalh = open((char *)normpat.bf, O_RDONLY);
+	if (chalh >= 0) {
+		if (fixedread(chalh, CHALLN_BYTESZ, rq->chal)) {
+			haschal = 1;
+			goto cleanup;
+		}
+		close(chalh);
+	}
+
+	chalh = open((char *)normpat.bf, O_TRUNC | O_WRONLY | O_CREAT, 0600);
+	if (chalh < 0) { perror("open chal file for writing"); goto cleanup; }
+	randh = open("/dev/random", O_RDONLY);
+
+	if (0>chalh || 0>randh || !fixedread(randh, CHALLN_BYTESZ, rq->chal))
+		goto cleanup;
+	haschal = 1;
+	full_write(&(struct wrides){chalh}, rq->chal, CHALLN_BYTESZ);
+
+cleanup:
+	if (chalh >= 0) close(chalh);
+	if (randh >= 0) close(randh);
+	if (!haschal) memset(rq->chal, 0, CHALLN_BYTESZ);
+	fdb_finsh(&normpat);
+}
+
+int require_auth(void)
+{
+	static int r;
+	if (!r) r = getenv("WERMRELYINGPARTY") ? 1 : -1;
+	return r > 0;
+}
+
+#define SESSIONCOOKNAME "wermsession="
+
+static int extractsescook(Httpreq *rq)
+{
+	char *incr = strstr(reqcr, SESSIONCOOKNAME), *otcr = rq->sescook;
+
+	if (!incr)		return 0;
+	if (incr[-1] != ' ')	return 0;
+	incr += sizeof(SESSIONCOOKNAME) - 1;
+
+	while (*incr && *incr != ';') {
+		*otcr++ = *incr++;
+
+		if (otcr - rq->sescook < sizeof(rq->sescook)) continue;
+
+		*--otcr = 0;
+		return 0;
+	}
+
+	*otcr = 0;
+	return 1;
+}
+
 void http_read_req(FILE *src, Httpreq *rq, struct wrides *respout)
 {
 	char *rc, *qstart;
 	int connectionupgr = 0, goodwsver = 0, upgradews = 0, wsconds = -1;
 	struct fdbuf respbuf = {0};
 
+	if (require_auth()) rq->pendauth = 1;
+
 	if (!readreqln(src)) goto badreq;
 
-	if (	consumereqln("PUT ")
-	    ||	consumereqln("POST ")
-	    ||	consumereqln("DELETE ")
-	    ||	consumereqln("CONNECT ")
-	    ||	consumereqln("OPTIONS ")
-	    ||	consumereqln("TRACE ")
-	    ||	consumereqln("PATCH ")) goto methoderr;
-
-	if (!consumereqln("GET ")) {
-		if (!consumereqln("HEAD ")) goto badreq;
-		rq->head = 1;
-	}
+	if	(	consumereqln("POST "))		rq->rqtype = 'P';
+	else if	(	consumereqln("GET "))		rq->rqtype = 'G';
+	else if (	consumereqln("HEAD "))		rq->rqtype = 'H';
+	else if (	consumereqln("PUT "))		goto methoderr;
+	else if (	consumereqln("DELETE "))	goto methoderr;
+	else if (	consumereqln("CONNECT "))	goto methoderr;
+	else if (	consumereqln("OPTIONS "))	goto methoderr;
+	else if (	consumereqln("TRACE "))		goto methoderr;
+	else if (	consumereqln("PATCH "))		goto methoderr;
+	else						goto badreq;
 
 	if (llen < 9) goto badreq;
 	if (strcmp(" HTTP/1.1", reqcr + llen - 9)) goto badreq;
@@ -224,16 +351,23 @@ void http_read_req(FILE *src, Httpreq *rq, struct wrides *respout)
 			if (!procwskeyhdr(reqcr, respout)) goto seterr;
 			continue;
 		}
+		if (rq->pendauth && consumereqln("cookie:")) {
+			if (extractsescook(rq)) authn_state(rq, 0);
+			fprintf(stderr, "pending auth for: %s = %d\n",
+				reqcr, rq->pendauth);
+			continue;
+		}
 	}
 
 	wsconds = (upgradews		? 1 : 0)
 		| (connectionupgr	? 2 : 0)
 		| (goodwsver		? 4 : 0)
-		| (*acceptkey		? 8 : 0);
+		| (*acceptwskey		? 8 : 0);
 
 	if (!wsconds)		goto cleanup;
 	if (wsconds != 15)	goto badreq;
-	if (rq->head)		goto methoderr;
+	if (rq->rqtype != 'G')	goto methoderr;
+	if (rq->pendauth) { resp_dynamc(respout, 't', 401, 0, 0); goto seterr; }
 
 	rq->validws = 1;
 	fdb_apnd(&respbuf,	"HTTP/1.1 101 Switching Protocols\r\n"
@@ -241,7 +375,7 @@ void http_read_req(FILE *src, Httpreq *rq, struct wrides *respout)
 				"Connection: Upgrade\r\n"
 				"Sec-WebSocket-Accept: ", -1);
 
-	fdb_apnd(&respbuf, acceptkey, -1);
+	fdb_apnd(&respbuf, acceptwskey, -1);
 	fdb_apnd(&respbuf, "\r\n\r\n", -1);
 	full_write(respout, respbuf.bf, respbuf.len);
 	goto cleanup;
@@ -270,8 +404,8 @@ static void dumpreq(Httpreq *rq)
 
 	printf("resource: %s\n", rq->resource);
 	if (*rq->query) printf("query: %s\n", rq->query);
-	printf("restrict fetch site: %u valid ws: %u head: %u\n",
-	       rq->restrictfetchsite, rq->validws, rq->head);
+	printf("restrict fetch site: %u valid ws: %u rqtyp: %c\n",
+	       rq->restrictfetchsite, rq->validws, rq->rqtype);
 }
 
 static void resettmpfile(FILE **f)
@@ -293,6 +427,7 @@ static void resphdr(struct wrides *de, int code, char hdr, size_t contlength)
 	default: abort();
 		case 200: xfdeny=1; codest="200 OK";
 	break;	case 400: xfdeny=0; codest="400 Bad Request";
+	break;	case 401: xfdeny=0; codest="401 Unauthorized";
 	break;	case 403: xfdeny=0; codest="403 Forbidden";
 	break;	case 404: xfdeny=0; codest="404 Not Found";
 	break;	case 405: xfdeny=0; codest="405 Method Not Allowed";
