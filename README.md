@@ -84,7 +84,7 @@ This is not an officially supported Google product.
 
  * Verify the following packages are installed:
 
-   [Debian] libmd4c-dev libmd4c-html0-dev libssl-dev
+   [Debian] libmd4c-dev libmd4c-html0-dev libssl-dev libfido2-dev pkg-config
 
    [Arch] core/make extra/md4c
 

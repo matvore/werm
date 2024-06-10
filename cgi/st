@@ -5,4 +5,18 @@
 # license that can be found in the LICENSE file or at
 # https://developers.google.com/open-source/licenses/bsd
 
+if test -z "$WERMAUTHNUSER"; then
+	WERMAUTHNUSER="$HOSTNAME:$USER"
+fi
+
+echo window.wermauthnuser = \""$WERMAUTHNUSER"\"\;
+echo window.relyingparty = \""$WERMRELYINGPARTY"\"\;
+
+echo -n "$WERMAUTHNUSER" | sha256sum | sed '
+	s/ .*//
+	s/../0x&,/g
+	s/^/window.wermuserid = \[/
+	s/,$/\];/
+'
+
 echo '#include "main.js"' | cpp -P -I$WERMSRCDIR "$@"

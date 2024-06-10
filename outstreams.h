@@ -45,6 +45,9 @@ void fdb_apnd(struct fdbuf *b, const void *buf_, ssize_t len);
  */
 void fdb_apnc(struct fdbuf *b, int c_);
 
+/* Appends lowercase hexadecimal byte. Always appends two characters. */
+void fdb_hexb(struct fdbuf *b, int byt);
+
 /* Flushes the buffer if it is not empty and `de` is set. Then frees the
  * buffer. */
 void fdb_finsh(struct fdbuf *b);
@@ -67,6 +70,10 @@ void fdb_json(struct fdbuf *b, const char *s, ssize_t len);
    if this is used for terminal output to the client. */
 void fdb_itoa(struct fdbuf *b, long long i);
 
+/* converts the data of |dat_| to a hex string and appends it.  Uses |bsz| bytes
+from |dat_|. */
+void fdb_hexs(struct fdbuf *b, void *dat_, unsigned bsz);
+
 /* Writes an entire buffer to the given file descriptor. If len is -1, prints
  * buf_ as a null-terminated string. */
 void full_write(struct wrides *de, const void *buf_, ssize_t len);
@@ -83,5 +90,9 @@ void write_wbsoc_frame(const void *buf, ssize_t len);
 void _Noreturn exit_msg(const char *flags, const char *msg, int code);
 
 void test_outstreams(void);
+
+/* Returns the lowercase hex digit (0-9 or a-f) matching the lowest 4 bits of
+v. */
+char hexdig_lc(int v);
 
 #endif
