@@ -36,6 +36,8 @@ struct fdbuf {
 	unsigned char *bf;
 };
 
+#define CB(fdb) ((char *)(fdb).bf)
+
 /* Appends bytes to the end of the buffer and flushes it if it becomes full.
  * If len is -1, treats buf_ as a null-terminated string and appends the non-
  * null portion of it. */
