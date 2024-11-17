@@ -55,3 +55,24 @@ prepare:
 	setenv("WERMVARDIR", rd, 1);
 	return rd;
 }
+
+void send_to_subproc(Dtachctx dc)
+{
+	ssize_t wtn;
+
+	if (!dc->forsubp.len) return;
+
+	for (;;) {
+		wtn = write(dc->the_pty.fd, dc->forsubp.bf, dc->forsubp.len);
+		if (wtn > 0) break;
+
+		if (errno==EINTR)				continue;
+		if (errno==EAGAIN || errno==EWOULDBLOCK)	return;
+
+		perror("write to subproc");
+		abort();
+	}
+
+	dc->forsubp.len -= wtn;
+	memmove(dc->forsubp.bf, dc->forsubp.bf + wtn, dc->forsubp.len);
+}

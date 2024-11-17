@@ -19,6 +19,9 @@ typedef struct dtach_ctx {
 	char *sockpath;
 	struct subproc_args *spargs;
 
+	/* Input from the client destined for the subproc's stdin. */
+	struct fdbuf forsubp;
+
 	struct pty the_pty;
 
 	/* Indicates a client has attached at some point. */

@@ -18,6 +18,12 @@
 
 /* WERM-SPECIFIC MODIFICATIONS
 
+ NOV 2024
+
+ - keep data from clients in a buffer until the pty is ready to accept it
+   without blocking. In masterprocess function, wait until the pty is writeable
+   in the select(2) call.
+
  JAN 2024
 
  - move ownership of clients linked list to Dtachctx and refactor references to
@@ -378,8 +384,9 @@ static _Noreturn void
 masterprocess(Dtachctx dc, int s)
 {
 	struct client *p, *next;
-	fd_set readfds;
+	fd_set readfds, writefds;
 	int highest_fd, nullfd;
+	int *pfd = &dc->the_pty.fd;
 
 	/* Okay, disassociate ourselves from the original terminal, as we
 	** don't care what happens to it. */
@@ -430,6 +437,7 @@ masterprocess(Dtachctx dc, int s)
 	{
 		/* Re-initialize the file descriptor set for select. */
 		FD_ZERO(&readfds);
+		FD_ZERO(&writefds);
 		FD_SET(s, &readfds);
 		highest_fd = s;
 
@@ -440,23 +448,25 @@ masterprocess(Dtachctx dc, int s)
 		if (dc->cls && dc->cls->cls.wantsoutput) dc->firstatch = 1;
 
 		if (dc->firstatch) {
-			if (!dc->sentpre) send_pream(dc->the_pty.fd);
+			if (!dc->sentpre) send_pream(&dc->forsubp);
 			dc->sentpre = 1;
 
-			FD_SET(dc->the_pty.fd, &readfds);
-			if (dc->the_pty.fd > highest_fd)
-				highest_fd = dc->the_pty.fd;
+			FD_SET(*pfd, &readfds);
+			if (*pfd > highest_fd) highest_fd = *pfd;
 		}
 
 		for (p = dc->cls; p; p = p->next)
 		{
 			FD_SET(p->fd, &readfds);
-			if (p->fd > highest_fd)
-				highest_fd = p->fd;
+			if (p->fd > highest_fd) highest_fd = p->fd;
 		}
 
 		/* Wait for something to happen. */
-		if (select(highest_fd + 1, &readfds, NULL, NULL, NULL) < 0) {
+		if (dc->forsubp.len) {
+			FD_SET(*pfd, &writefds);
+			if (*pfd > highest_fd) highest_fd = *pfd;
+		}
+		if (0>select(highest_fd + 1, &readfds, &writefds, 0, 0)) {
 			handleselecterr(dc->the_pty.pid);
 			continue;
 		}
@@ -471,10 +481,10 @@ masterprocess(Dtachctx dc, int s)
 			if (FD_ISSET(p->fd, &readfds))
 				client_activity(dc, p);
 		}
+		if (FD_ISSET(*pfd, &writefds)) send_to_subproc(dc);
 		if (!dc->cls && dc->firstatch && dc->isephem) exit(0);
 		/* pty activity? */
-		if (FD_ISSET(dc->the_pty.fd, &readfds))
-			pty_activity(dc, s);
+		if (FD_ISSET(*pfd, &readfds)) pty_activity(dc, s);
 	}
 }
 

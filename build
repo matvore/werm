@@ -329,6 +329,10 @@ filetocstr 0, 'attch_html'		, 'attach';
 filetocstr 0, 'common_css'		, 'common.css';
 filetocstr 0, 'readme_css'		, 'readme.css';
 filetocstr 1, 'ephemeral_hello'		, 'ephemeral_hello.txt';
+filetocstr 0, 'logview_sh'		, 'util/logview';
+filetocstr 0, 'showenv'			, 'cgi/showenv';
+filetocstr 0, 'aux_js'			, 'cgi/aux.js';
+filetocstr 0, 'scrollback'		, 'cgi/scrollback';
 
 open my $dahdr, '>', 'gen/data.h';
 for my $dalin (@datahdr) { print $dahdr $dalin }

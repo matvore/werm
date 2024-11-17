@@ -51,8 +51,9 @@ void process_kbd(int clioutfd, Dtachctx dc, struct clistate *cls,
  * attacher). */
 void set_argv0(Dtachctx dc, char role);
 
-/* Called if the process was attached to for the first time. */
-void send_pream(int fd);
+/* Called if the process was attached to for the first time. Writes preamble to
+the given buffer. */
+void send_pream(struct fdbuf *o);
 
 /* Called by master process. This must only be called by master, and never by
  * the attaching process, as the attaching process may have a later date on it
@@ -75,5 +76,9 @@ char *next_uniqid(void);
 /* Serves http over stdin/stdout. Returns 1 if the connection can be used to
    continue serving requests. */
 int http_serv(void);
+
+/* Sends as much content in dc->forsubp to the pty as possible without
+blocking. */
+void send_to_subproc(Dtachctx dc);
 
 #endif

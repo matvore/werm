@@ -634,24 +634,41 @@ static void profinfo4cli(struct wrides *de)
 	fdb_finsh(&sigb);
 }
 
-void send_pream(int fd)
+static void initresfile(int mode, const char *varfn, void *dat, size_t len)
 {
-	struct fdbuf ob = {&(struct wrides){fd}};
+	struct fdbuf pa = {0};
+	int fd;
 
+	fdb_apnd(&pa, state_dir(), -1);
+	fdb_apnc(&pa, '/');
+	fdb_apnd(&pa, varfn, -1);
+
+	fd = open(cstr(&pa), O_CREAT|O_WRONLY, mode);
+	if (0 > fd) { perror("stat/open for resource file"); abort(); }
+
+	full_write(&(struct wrides){fd}, dat, len);
+	close(fd);
+
+	fdb_finsh(&pa);
+}
+
+void send_pream(struct fdbuf *o)
+{
 	if (logview) {
-		fdb_apnd(&ob, ". $WERMSRCDIR/util/logview ", -1);
-		fdb_apnd(&ob, logview, -1);
-		fdb_apnd(&ob, "\r", -1);
+		fdb_apnd(o, ". ", -1);
+		fdb_apnd(o, state_dir(), -1);
+		fdb_apnd(o, "/logview.sh ", -1);
+		fdb_apnd(o, logview, -1);
+		fdb_apnc(o, '\r');
 	}
 	else {
 		iterprofs(profpath(), &((struct iterprofspec){
-			.sigb = &ob,
+			.sigb = o,
 			.sendpream = 1,
 			.diaglog = 1,
 		}));
 	}
 
-	fdb_finsh(&ob);
 }
 
 static void linetitl(struct fdbuf *o)
@@ -790,9 +807,6 @@ cleanup:
 }
 
 static void writetosubproccore(
-	/* Where to send output for the process; this is raw keyboard input. */
-	struct wrides *procde,
-
 	/* Where to send output for attached client. */
 	struct wrides *clioutde,
 
@@ -805,7 +819,6 @@ static void writetosubproccore(
 {
 	unsigned wi;
 	unsigned char byte, cursmvbyte;
-	struct fdbuf kbdb = {procde};
 
 	wts.sendsigwin = 0;
 
@@ -820,7 +833,7 @@ static void writetosubproccore(
 			if (byte == '\\')
 				wts.escp = '1';
 			else
-				fdb_apnc(&kbdb, byte);
+				fdb_apnc(&dc->forsubp, byte);
 			break;
 
 		case '1':
@@ -829,11 +842,11 @@ static void writetosubproccore(
 
 			switch (byte) {
 			case 'n':
-				fdb_apnc(&kbdb, '\n');
+				fdb_apnc(&dc->forsubp, '\n');
 				break;
 
 			case '\\':
-				fdb_apnc(&kbdb, '\\');
+				fdb_apnc(&dc->forsubp, '\\');
 				break;
 
 			case 'w':
@@ -878,12 +891,12 @@ static void writetosubproccore(
 			}
 
 			if (!cursmvbyte) break;
-			fdb_apnc(&kbdb, 033);
+			fdb_apnc(&dc->forsubp, 033);
 			/* application cursor mode does O rather than [ */
-			fdb_apnc(&kbdb,	wts.t &&
+			fdb_apnc(&dc->forsubp, wts.t &&
 					MODE_APPCURSOR & term(wts.t,mode)
 					? 'O' : '[');
-			fdb_apnc(&kbdb, cursmvbyte);
+			fdb_apnc(&dc->forsubp, cursmvbyte);
 			break;
 
 		case 'w':
@@ -922,19 +935,17 @@ static void writetosubproccore(
 		}
 	}
 
-	fdb_finsh(&kbdb);
-
 	if (wts.t && wts.sendsigwin) tresize(wts.t, wts.swcol, wts.swrow);
 }
 
 void process_kbd(int clioutfd, Dtachctx dc, struct clistate *cls,
 		 unsigned char *buf, size_t bufsz)
 {
-	struct wrides ptyde = { dc->the_pty.fd }, clide = { clioutfd };
+	struct wrides clide = { clioutfd };
 
 	struct winsize ws = {0};
 
-	writetosubproccore(&ptyde, &clide, dc, cls, buf, bufsz);
+	writetosubproccore(&clide, dc, cls, buf, bufsz);
 
 	if (!wts.sendsigwin) return;
 
@@ -954,12 +965,14 @@ static void putrwout(void)
 static Dtachctx testdc(char op)
 {
 	static Dtachctx dc;
+	static struct wrides de = {1, "pty"};
 
 	switch (op) {
 		case 'g':	if (!dc) abort();
 	break;	case 'r':
 		free(dc);
 		dc = calloc(1, sizeof(*dc));
+		dc->forsubp.de = &de;
 	break;	default: abort();
 	}
 
@@ -1010,10 +1023,11 @@ static void testreset(void)
 
 static void writetosp0term(const void *s)
 {
-	struct wrides pty = {1, "pty"}, cli = {1, "cli"};
+	struct wrides cli = {1, "cli"};
 
 	writetosubproccore(
-		&pty, &cli, testdc('g'), testclistate('g'), s, strlen(s));
+		&cli, testdc('g'), testclistate('g'), s, strlen(s));
+	fdb_finsh(&testdc('g')->forsubp);
 
 	if (wts.sendsigwin)
 		printf("sigwin r=%d c=%d\n", wts.swrow, wts.swcol);
@@ -1767,7 +1781,6 @@ static void begnsesnlis(struct wrides *de)
 
 static void externalcgi(struct wrides *de, char hdr, Httpreq *rq)
 {
-	char *binp;
 	struct fdbuf b = {0};
 	int p[2];
 	pid_t cpid;
@@ -1782,10 +1795,10 @@ static void externalcgi(struct wrides *de, char hdr, Httpreq *rq)
 	if (!cpid) {
 		close(p[0]);
 
-		xasprintf(&binp, "%s/cgi%s",
-			  getenv("WERMSRCDIR"), rq->resource);
+		fdb_apnd(&b, state_dir(), -1);
+		fdb_apnd(&b, rq->resource, -1);
 		setenv("QUERY_STRING", rq->query, 1);
-		execl(binp, binp, NULL);
+		execl(cstr(&b), cstr(&b), NULL);
 		perror("execl for external cgi");
 		exit(1);
 	}
@@ -2163,6 +2176,13 @@ int main(int argc, char **argv)
 
 	if (mode == 's') termid = strdup("~spawner");
 	if (mode == 'n') termid = strdup(argv[1]);
+
+	if (mode == 's') {
+		initresfile(0600, "logview.sh",	logview_sh,	LOGVIEW_SH_LEN);
+		initresfile(0700, "showenv",	showenv,	SHOWENV_LEN);
+		initresfile(0700, "aux.js",	aux_js,		AUX_JS_LEN);
+		initresfile(0700, "scrollback",	scrollback,	SCROLLBACK_LEN);
+	}
 
 	appendunqid(0);
 	dc = prepfordtach();
