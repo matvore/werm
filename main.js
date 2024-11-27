@@ -1159,8 +1159,15 @@ function set_default_font(ndx)
 	set_default_font = function() {};
 }
 
-function evrow(e) { return 0 | e.clientY/ghei*window.devicePixelRatio }
-function evcol(e) { return 0 | e.clientX/gwid*window.devicePixelRatio }
+function coorclam(evcoor, lim)
+{
+	evcoor *= window.devicePixelRatio;
+	return Math.max(0, Math.min(fld(t,lim), 0 | evcoor));
+}
+
+function evrow(e) { return coorclam(e.clientY/ghei, term_row) }
+function evcol(e) { return coorclam(e.clientX/gwid, term_col) }
+
 function ecoor(e) { return `${evcol(e)}:${evrow(e)}` }
 
 function docopy(deq)
@@ -1187,9 +1194,11 @@ function readywindow()
 		term(t,mode) &= ~MODE_FOCUSED;
 		draw(t);
 	};
-	tel.onmousedown = function(e)
+	tel.onpointerdown = function(e)
 	{
 		if (0 == (e.buttons & 3)) return;
+
+		tel.setPointerCapture(e.pointerId);
 
 		/* !selecting		mouse button not down
 		   selecting==1		moved mouse after mousedown
@@ -1200,9 +1209,12 @@ function readywindow()
 		click2sel(t, evrow(e), evcol(e), 1&e.buttons);
 		draw(t);
 	};
-	tel.onmouseup = function(e)
+	tel.onpointerup = function(e)
 	{
 		var sq;
+
+		if (tel.hasPointerCapture(e.pointerId))
+			tel.releasePointerCapture(e.pointerId);
 
 		if (!selecting) return;
 		if (selecting != 1 && !term(t,selsnap)) {
@@ -1221,7 +1233,7 @@ function readywindow()
 		docopy(sq);
 		tmfree(sq);
 	};
-	tel.onmousemove = function(e)
+	tel.onpointermove = function(e)
 	{
 		var st, i;
 
