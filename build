@@ -348,6 +348,7 @@ if ! $CC -x c -std=c99 -I. \
 	-D_POSIX_C_SOURCE=200809L		\
 	-D_XOPEN_SOURCE=600			\
 	-D_GNU_SOURCE				\
+	-Wno-return-mismatch			\
 	-Werror=format				\
 	-Wno-return-type			\
 	-Werror=unused-variable			\
