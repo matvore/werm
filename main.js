@@ -1572,8 +1572,9 @@ function show_barrier(col)
 	barrdiv = document.createElement('div');
 	barrdiv.termcols = col;
 	s = barrdiv.style;
-	s.position = 'absolute';
-	s.opacity = 0.3;
+	s.position	= 'absolute';
+	s.opacity	= 0.3;
+	s.pointerEvents	= 'none';
 	s.backgroundColor = 'hsl(' + (col * 283 % 360) + ', 90%, 50%)'
 	updatebarrdivcw();
 	s.top = '0';
