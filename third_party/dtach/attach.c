@@ -18,6 +18,11 @@
 
 /* WERM-SPECIFIC MODIFICATIONS
 
+ DEC 2024
+
+ - attach_main: style changes for consistency with Werm codebase. Make "s" the
+   socket non-blocking, and buffer stdin content until it is ready for writing.
+
  JAN 2024
 
  - attach_main takes Dtachctx as an argument
@@ -161,8 +166,9 @@ die(int sig)
 void attach_main(Dtachctx dc, int noerror)
 {
 	unsigned char buf[BUFSIZE];
-	fd_set readfds;
-	int s;
+	fd_set readfds, writfds;
+	struct fdbuf fromstdin = {0};
+	int s, n;
 
 	set_argv0(dc, 'a');
 
@@ -170,6 +176,10 @@ void attach_main(Dtachctx dc, int noerror)
 	if (s < 0) {
 		if (noerror) return;
 		exit_msg("es", "dtach connect_socket errno: ", errno);
+	}
+	if (0 > set_nonblocking(s)) {
+		perror("cannot set socket non-blocking");
+		abort();
 	}
 
 	/* Set some signals. */
@@ -186,18 +196,21 @@ void attach_main(Dtachctx dc, int noerror)
 	/* Wait for things to happen */
 	while (1)
 	{
-		int n;
-
 		FD_ZERO(&readfds);
 		FD_SET(0, &readfds);
 		FD_SET(s, &readfds);
-		n = select(s + 1, &readfds, NULL, NULL, NULL);
-		if (n < 0 && errno != EINTR && errno != EAGAIN)
+
+		FD_ZERO(&writfds);
+		if (fromstdin.len) FD_SET(s, &writfds);
+
+		n = select(s + 1, &readfds, &writfds, NULL, NULL);
+		if (n < 0) {
+			if (errno == EINTR || errno == EAGAIN) continue;
 			exit_msg("e", "select syscall failed: ", errno);
+		}
 
 		/* Pty activity */
-		if (n > 0 && FD_ISSET(s, &readfds))
-		{
+		if (FD_ISSET(s, &readfds)) {
 			ssize_t len = read(s, buf, sizeof(buf));
 
 			if (len == 0)
@@ -207,13 +220,9 @@ void attach_main(Dtachctx dc, int noerror)
 
 			/* Send the data to the terminal. */
 			write_wbsoc_frame(buf, len);
-			n--;
 		}
 		/* stdin activity */
-		if (n > 0 && FD_ISSET(0, &readfds))
-		{
-			fwrd_inbound_frames(s);
-			n--;
-		}
+		if (FD_ISSET(0, &readfds)) fwrd_inbound_frames(&fromstdin);
+		if (FD_ISSET(s, &writfds)) buf_to_fd(&fromstdin, s);
 	}
 }

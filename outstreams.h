@@ -27,14 +27,14 @@ struct wrides {
 
 /* Comprises a file descriptor and a buffer which is pending a write to it.
  * This is useful for adhoc and simple buffering of content to an fd. */
-struct fdbuf {
+typedef struct fdbuf {
 	/* If unset, bf will grow unboundedly as writes accumulate. */
 	struct wrides *de;
 	unsigned cap, len;
 
 	/* Automatically allocated on any append operation if unset. */
 	unsigned char *bf;
-};
+} *Fdbuf;
 
 /* Appends bytes to the end of the buffer and flushes it if it becomes full.
  * If len is -1, treats buf_ as a null-terminated string and appends the non-
@@ -88,6 +88,11 @@ void full_write(struct wrides *de, const void *buf_, ssize_t len);
 
 /* Writes data in buffer as a websocket data frame to stdout. */
 void write_wbsoc_frame(const void *buf, ssize_t len);
+
+/* Sends the contents of src to dst with a single write(2) call. Moves
+   unwritten data in src to the start of its buffer, and adjusts the buffer
+   length accordingly. */
+void buf_to_fd(Fdbuf src, int dst);
 
 /* Formats and escapes a message for output to stdout as websocket data.
  * code is concatenated on the end of the message, if it is not -1.

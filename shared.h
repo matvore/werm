@@ -77,8 +77,8 @@ char *next_uniqid(void);
    continue serving requests. */
 int http_serv(void);
 
-/* Sends as much content in dc->forsubp to the pty as possible without
-blocking. */
-void send_to_subproc(Dtachctx dc);
+/* Makes the given fd non-blocking, returning -1 and setting errno on error.
+   Returns 0 on success. */
+int set_nonblocking(int fd);
 
 #endif

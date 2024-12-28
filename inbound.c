@@ -49,7 +49,7 @@ static unsigned char *forceinby(int c)
 	return buf + bfi - c;
 }
 
-void fwrd_inbound_frames(int sock)
+void fwrd_inbound_frames(Fdbuf dest)
 {
 	unsigned char mask[4];
 	uint64_t datalen;
@@ -108,7 +108,7 @@ void fwrd_inbound_frames(int sock)
 					unmaskof &= 3;
 				}
 
-				full_write(&(struct wrides){sock}, bfc, datpart);
+				fdb_apnd(dest, bfc, datpart);
 
 				datalen -= datpart;
 			}

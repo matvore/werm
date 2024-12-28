@@ -18,6 +18,10 @@
 
 /* WERM-SPECIFIC MODIFICATIONS
 
+ DEC 2024
+
+ - make setnonblocking a shared function, renaming to set_nonblocking.
+
  NOV 2024
 
  - keep data from clients in a buffer until the pty is ready to accept it
@@ -118,8 +122,7 @@ static RETSIGTYPE
 die(int sig) { if (sig != SIGCHLD) exit(1); }
 
 /* Sets a file descriptor to non-blocking mode. */
-static int
-setnonblocking(int fd)
+int set_nonblocking(int fd)
 {
 	int flags;
 
@@ -134,8 +137,7 @@ setnonblocking(int fd)
 		return -1;
 	return 0;
 #else
-#warning Do not know how to set non-blocking mode.
-	return 0;
+#error Do not know how to set non-blocking mode.
 #endif
 }
 
@@ -179,7 +181,7 @@ create_socket(char *name)
 		close(s);
 		return -1;
 	}
-	if (setnonblocking(s) < 0)
+	if (set_nonblocking(s) < 0)
 	{
 		close(s);
 		return -1;
@@ -304,7 +306,7 @@ control_activity(Dtachctx dc, int s)
 	fd = accept(s, NULL, NULL);
 	if (fd < 0)
 		return;
-	else if (setnonblocking(fd) < 0)
+	else if (set_nonblocking(fd) < 0)
 	{
 		close(fd);
 		return;
@@ -481,7 +483,7 @@ masterprocess(Dtachctx dc, int s)
 			if (FD_ISSET(p->fd, &readfds))
 				client_activity(dc, p);
 		}
-		if (FD_ISSET(*pfd, &writefds)) send_to_subproc(dc);
+		if (FD_ISSET(*pfd, &writefds)) buf_to_fd(&dc->forsubp, *pfd);
 		if (!dc->cls && dc->firstatch && dc->isephem) exit(0);
 		/* pty activity? */
 		if (FD_ISSET(*pfd, &readfds)) pty_activity(dc, s);

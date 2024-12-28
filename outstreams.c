@@ -272,6 +272,27 @@ void write_wbsoc_frame(const void *buf, ssize_t len)
 	}
 }
 
+void buf_to_fd(Fdbuf src, int dst)
+{
+	ssize_t wtn;
+
+	if (!src->len) return;
+
+	for (;;) {
+		wtn = write(dst, src->bf, src->len);
+		if (wtn > 0) break;
+
+		if (errno==EINTR)				continue;
+		if (errno==EAGAIN || errno==EWOULDBLOCK)	return;
+
+		perror("buf_to_fd");
+		abort();
+	}
+
+	src->len -= wtn;
+	memmove(src->bf, src->bf + wtn, src->len);
+}
+
 void _Noreturn exit_msg(const char *flags, const char *msg, int code)
 {
 	struct fdbuf b = {0};

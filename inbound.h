@@ -6,6 +6,7 @@
 
 #include "outstreams.h"
 
-/* Forwards stdin, interpreted as websocket frames, to the given socket as
- * unframed data, otherwise uninterpreted. */
-void fwrd_inbound_frames(int sock);
+/* Forwards stdin, interpreted as websocket frames, to the given buffer as
+   unframed data, otherwise uninterpreted. Will process at least one frame,
+   maybe more. */
+void fwrd_inbound_frames(Fdbuf dest);
