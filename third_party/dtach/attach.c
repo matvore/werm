@@ -18,6 +18,10 @@
 
 /* WERM-SPECIFIC MODIFICATIONS
 
+ JAN 2025
+
+ - attach_main: make stdin non-blocking
+
  DEC 2024
 
  - attach_main: style changes for consistency with Werm codebase. Make "s" the
@@ -175,12 +179,10 @@ void attach_main(Dtachctx dc, int noerror)
 	s = connect_uds_as_client(dc->sockpath);
 	if (s < 0) {
 		if (noerror) return;
-		exit_msg("es", "dtach connect_socket errno: ", errno);
+		exit_msg("e", "dtach connect_socket errno: ", errno);
 	}
-	if (0 > set_nonblocking(s)) {
-		perror("cannot set socket non-blocking");
-		abort();
-	}
+	if (0 > set_nonblocking(0)) exit_msg("e", "set non-block wsock", errno);
+	if (0 > set_nonblocking(s)) exit_msg("e", "set non-block pty", errno);
 
 	/* Set some signals. */
 	signal(SIGPIPE, SIG_IGN);
