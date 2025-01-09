@@ -2179,6 +2179,7 @@ int main(int argc, char **argv)
 
 	if (mode == 's') {
 		initresfile(0600, "logview.sh",	logview_sh,	LOGVIEW_SH_LEN);
+		initresfile(0600, "sethist.sh",	sethist_sh,	SETHIST_SH_LEN);
 		initresfile(0700, "showenv",	showenv,	SHOWENV_LEN);
 		initresfile(0700, "aux.js",	aux_js,		AUX_JS_LEN);
 		initresfile(0700, "scrollback",	scrollback,	SCROLLBACK_LEN);
