@@ -600,12 +600,18 @@ function unlock_title()
 
 function set_title()
 {
-	var compons;
+	var compons, newurl, oldurl;
 
 	compons = [];
 	if (termid) compons.push(`[${termid}]`);
 
-	if (!locked_ttl) row_ttl = currowtext() || row_ttl;
+	oldurl = document.location + '';
+	newurl = oldurl.replace(/(?:#.*)?$/, '#');
+
+	if (!locked_ttl)	row_ttl = currowtext() || row_ttl;
+	else			newurl += row_ttl.replaceAll(' ', '_');
+
+	if (newurl != oldurl) history.replaceState(null, '', newurl);
 
 	if (row_ttl) compons.push(row_ttl);
 	compons.push(window.wermhosttitle);
