@@ -569,6 +569,16 @@ function currowtext()
 	return s;
 }
 
+/* Converts Unix paths so the path components are in reverse and separated by
+backslashes. This puts the more important part of the path first so it is more
+effective to use in titles. */
+function revpath(s) { return s.split('/').toReversed().join('\\') }
+
+/* Sets the customizable part of the page title, which is the part that usually
+is the part that doesn't include the profile name and by default is equal to the
+line of text where the cursor is. */
+function set_custom_title(ttl) { signal(`\\t${ttl}\n`); }
+
 function set_locked_title(type)
 {
 	var ttl, rc, rd, ri;
@@ -589,7 +599,7 @@ function set_locked_title(type)
 		ttl = currowtext();
 		break;
 	}
-	if (ttl) signal('\\t' + ttl + '\n');
+	if (ttl) set_custom_title(ttl);
 }
 
 function unlock_title()
