@@ -223,7 +223,7 @@ sblog[xyz     b       c\012]
 TEST: empty WERMPROFPATH
 TEST: non-existent and empty dirs in WERMPROFPATH
 reading profile dir at: test/profilesnoent
-opendir: No such file or directory
+open profile dir: No such file or directory
 reading profile dir at: test/profiles1
 TEST: match js and print
 reading profile dir at: test/profiles1

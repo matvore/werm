@@ -50,7 +50,12 @@ const char *state_dir(void)
 	xasprintf(&rd, "%s/var", wermdir);
 
 prepare:
-	if (mkdir(rd, 0700) && errno != EEXIST) err(1, "cannot create %s", rd);
+	if (mkdir(rd, 0700) && errno != EEXIST) {
+		perror("mkdir state dir");
+		fprintf(stderr, "state dir path: %s\n", rd);
+		fprintf(stderr,	"set WERMVARDIR env var and verify it can be"
+				" created (see README.md)\n");
+	}
 
 	setenv("WERMVARDIR", rd, 1);
 	return rd;

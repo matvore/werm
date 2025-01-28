@@ -517,10 +517,7 @@ static void iterprofs(const char *ppaths_, struct iterprofspec *spc)
 		fprintf(stderr, "reading profile dir at: %s\n", tkn);
 
 		pd = opendir(tkn);
-		if (!pd) {
-			perror("opendir");
-			continue;
-		}
+		if (!pd) { perror("open profile dir"); continue; }
 
 		for (;;) {
 			errno = 0;

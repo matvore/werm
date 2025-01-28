@@ -59,7 +59,7 @@ static void pickcand(struct pckd *c)
 	struct dirent *sdde;
 
 	sdfd = opendir(state_dir());
-	if (!sdfd) { perror("opendir"); abort(); }
+	if (!sdfd) { perror("open state_dir"); abort(); }
 
 	c->next = 0;
 	c->oldpath = 0;
