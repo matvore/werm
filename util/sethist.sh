@@ -11,6 +11,6 @@
 # function.
 
 dirname="$WERMVARDIR"/`date +%Y/%m`/hist
-mkdir -p "$dirname"
+mkdir -m 700 -p "$dirname"
 HISTFILE="$dirname/$1"
 PROMPT_COMMAND="history -a;$PROMPT_COMMAND"

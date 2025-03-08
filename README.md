@@ -124,7 +124,6 @@ This is not an officially supported Google product.
    socket (UDS) so only one user has access:
 
    ```
-   $ umask 0077
    $ ./run spawner [uds]:/tmp/werm.$USER.sock
    ```
 
