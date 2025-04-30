@@ -131,10 +131,20 @@ function term4cli()
 	term(t,ch) = ghei;
 }
 
-function term_canv()
+var curfnt = 4;
+
+function init_gl()
 {
-	t = term_new();
-	tnew(t, 80, 25);
+	if (gl && document.hidden)		return;
+
+	/* When Chromium has too many active GL contexts, many of the fields
+	will be set to 0. drawingBufferWidth is one of them. That indicates
+	that we need to re-create the canvas, which causes the GL to be
+	re-initialized. Just re-fetching the GL context from the canvas is
+	not sufficient. */
+	if (gl && gl.drawingBufferWidth)	return;
+
+	if (tel) document.body.removeChild(tel);
 
 	tel = document.createElement('canvas');
 	tel.style.position	= "absolute";
@@ -144,10 +154,19 @@ function term_canv()
 	tel.style.top		= 0;
 
 	document.body.appendChild(tel);
-
 	gl = tel.getContext('webgl2', {preserveDrawingBuffer: true});
 
-	set_font(4);
+	set_font(curfnt);
+}
+
+function term_canv()
+{
+	t = term_new();
+	tnew(t, 80, 25);
+
+	document.addEventListener('visibilitychange', init_gl);
+	window.addEventListener('focus', init_gl);
+	init_gl();
 }
 
 var	deffg = defaultpalette(DEFAULTFG),
@@ -1288,6 +1307,8 @@ function set_font(ndx)
 			mbit = 0, xoff = 0, yoff = 0, gwidedwid, 	vshdr,
 									fshdr;
 		if (!ab) { console.error('could not load font data'); return; }
+
+		curfnt = ndx;
 
 		cops = new Map();
 
