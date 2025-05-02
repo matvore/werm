@@ -726,7 +726,7 @@ function newcred()
 function display(s)
 {
 	var next_esc, pend_i, c, pend_remain, nli, escpylo, coldex,
-		esclen, toesc;
+		esclen, toesc, settid;
 
 	function pend(di) { return pend_display[pend_i + di]; }
 	function is_utf_trail(di) {
@@ -825,15 +825,17 @@ function display(s)
 		else if (s.startsWith('\\@auxjs:')) {
 			loadauxjs(escpylo);
 		}
-		else if (s.startsWith('\\@appendid:')) {
-			termid += escpylo;
-			history.replaceState(
-				{}, '', '/?termid=' + termid);
-		}
+		else if (s.startsWith('\\@appendid:')) settid = termid+escpylo;
+		else if (s.startsWith('\\@changeid:')) settid = escpylo;
 		else if (s.startsWith('\\!'))
 			console.debug('received keepalive response');
 		else
 			pend_display.push(hex_val(1) * 16 + hex_val(2));
+
+		if (settid) {
+			termid = settid;
+			history.replaceState({}, '', '/?termid=' + termid);
+		}
 
 		s = s.substr(esclen);
 	}

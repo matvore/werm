@@ -1745,6 +1745,56 @@ static int maybeservefont(struct wrides *de, const char *resource)
 	return 1;
 }
 
+static void resolvetidstar(void)
+{
+	DIR *skd;
+	struct dirent *sken;
+	char *dotoff, *prsname, *finname = 0;
+	struct fdbuf buf = {0};
+
+	if (strncmp("*.", termid, 2)) return;
+
+	if (!(skd = opendir(socksdir()))) {
+		perror("opendir: socks");
+		puts("error opening socks directory");
+		exit(1);
+	}
+
+	for (;;) {
+		errno = 0;
+		sken = readdir(skd);
+		if (!sken) {
+			if (errno) perror("readdir: socks");
+			break;
+		}
+		if (strncmp(sken->d_name, "prs%", 4))	continue;
+		prsname = sken->d_name + 4;
+
+		dotoff = strchr(prsname, '.');
+		if (!dotoff)			continue;
+		if (strcmp(dotoff, termid+1))	continue;
+
+		free(termid);
+		termid = strdup(prsname);
+
+		break;
+	}
+
+	if (!strncmp("*.", termid, 2)) {
+		finname = strdup(termid+1);
+		free(termid);
+		termid = finname;
+	}
+
+	fdb_apnd(&buf, "\\@changeid:", -1);
+	fdb_apnd(&buf, termid, -1);
+	fdb_apnc(&buf, '\n');
+	write_wbsoc_frame(buf.bf, buf.len);
+	fdb_finsh(&buf);
+
+	closedir(skd);
+}
+
 static _Noreturn void becomewebsocket(const char *quer)
 {
 	/* These query args settings do not get inherited from the spawner to
@@ -1757,7 +1807,7 @@ static _Noreturn void becomewebsocket(const char *quer)
 	processquerystr(quer);
 	if (termid) {
 		checktid();
-		if (!strchr(termid, '.')) appendunqid(1);
+		if (!strchr(termid, '.')) appendunqid(1); else resolvetidstar();
 	}
 
 	dtach_main(prepfordtach());
