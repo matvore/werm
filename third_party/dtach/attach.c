@@ -18,6 +18,10 @@
 
 /* WERM-SPECIFIC MODIFICATIONS
 
+ MAY 2025
+
+ - attach_main: timeout for idle clients
+
  JAN 2025
 
  - attach_main: make stdin non-blocking
@@ -64,6 +68,7 @@
 #include "outstreams.h"
 #include "inbound.h"
 #include "shared.h"
+#include "tmconst"
 
 static int
 isoldfile(const struct stat *sb)
@@ -172,6 +177,8 @@ void attach_main(Dtachctx dc, int noerror)
 	unsigned char buf[BUFSIZE];
 	fd_set readfds, writfds;
 	struct fdbuf fromstdin = {0};
+	time_t lastin = 0;
+	long tout;
 	int s, n;
 
 	set_argv0(dc, 'a');
@@ -205,7 +212,14 @@ void attach_main(Dtachctx dc, int noerror)
 		FD_ZERO(&writfds);
 		if (fromstdin.len) FD_SET(s, &writfds);
 
-		n = select(s + 1, &readfds, &writfds, NULL, NULL);
+		if (!lastin) lastin = time(0);
+		tout = lastin - time(0) + (KEEPALIVE_INTERV_MAX_SEC * 13 / 10);
+
+		/* If already timed out, the next select(2) is a poll. So
+		something must be ready right away. */
+		n = select(	s + 1, &readfds, &writfds, 0,
+				&(struct timeval) {tout < 0 ? 0 : tout, 0});
+		if (!n) exit(0);
 		if (n < 0) {
 			if (errno == EINTR || errno == EAGAIN) continue;
 			exit_msg("e", "select syscall failed: ", errno);
@@ -224,7 +238,10 @@ void attach_main(Dtachctx dc, int noerror)
 			write_wbsoc_frame(buf, len);
 		}
 		/* stdin activity */
-		if (FD_ISSET(0, &readfds)) fwrd_inbound_frames(&fromstdin);
+		if (FD_ISSET(0, &readfds)) {
+			fwrd_inbound_frames(&fromstdin);
+			lastin = 0;
+		}
 		if (FD_ISSET(s, &writfds)) buf_to_fd(&fromstdin, s);
 	}
 }

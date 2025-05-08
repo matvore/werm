@@ -1008,11 +1008,13 @@ function doauthn()
 function keepali()
 {
 	if (sock && sock.readyState == WebSocket.OPEN) signal('\\!\n');
-	/* Re-send every 60-80 seconds. This uses non-determinism to avoid every
-	browser window sending the heartbeat at the same time in the case of
-	a restored session (or something that opens several terminal tabs at
-	once). */
-	window.setTimeout(keepali, 60000 + Math.random() * 20000);
+	/* Re-send keepalive ping every 60-80 seconds. This uses non-determinism
+	to avoid every browser window sending the heartbeat at the same time in
+	the case of a restored session (or something that opens several terminal
+	tabs at once). */
+	var range = KEEPALIVE_INTERV_MAX_SEC	- KEEPALIVE_INTERV_MIN_SEC;
+	var waits = range * Math.random()	+ KEEPALIVE_INTERV_MIN_SEC;
+	window.setTimeout(keepali, waits * 1000);
 }
 keepali();
 
