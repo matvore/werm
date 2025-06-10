@@ -204,7 +204,7 @@ int main()
 	deq = deqpushbyt(deq, 0);
 
 	d = &fld(deq, deqhd(deq));
-	printf("%s\n", d);
+	printf("%s\n", (char *) d);
 
 	tmfree(deq);
 	deq = deqmk();

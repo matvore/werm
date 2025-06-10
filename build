@@ -20,32 +20,32 @@ unset WERMPASSKEYID
 unset WERMAUTHKEYS
 
 perl <<'EOF' || exit 1
+use strict;
 use IPC::Open2;
 
 my $fontcnt = 0;
 my $fntc;
 
 my @wfns = (
-	'26:230:128:8:0:third_party/oldschool-pc-fonts/ibm_ega_8x8.wermfont',
-	'26:230:128:12:0:third_party/oldschool-pc-fonts/hp_100lx_10x11.wermfont',
-	'26:250:512:14:1:third_party/shinonome/jfdot_7x14.wermfont',
-	'26:230:128:16:0:third_party/oldschool-pc-fonts/ibm_vga_8x16.wermfont',
-	'26:230:128:16:0:third_party/oldschool-pc-fonts/ibm_vga_9x16.wermfont',
-	'26:230:128:20:0:third_party/oldschool-pc-fonts/dos_v_ibm_8x19.wermfont',
-	'26:230:128:20:0:third_party/oldschool-pc-fonts/cl_stringray_8x19.wermfont',
-	'26:250:1024:20:0:third_party/ayu/jfdot_10x20.wermfont',
-	'26:245:128:20:0:third_party/oldschool-pc-fonts/ibm_xga_ai_12x20.wermfont',
-	'26:230:128:24:0:third_party/oldschool-pc-fonts/ibm_xga_ai_12x23.wermfont',
-	'26:230:128:32:0:third_party/oldschool-pc-fonts/dos_v_re_12x30.wermfont',
+	'26:230: 128: 8: 8:0:o:third_party/oldschool-pc-fonts/ibm_ega_8x8.wermfont',
+	'26:230: 128:10:12:0:o:third_party/oldschool-pc-fonts/hp_100lx_10x11.wermfont',
+	'26:250: 512: 7:14:1:o:third_party/shinonome/jfdot_7x14.wermfont',
+	'26:230: 128: 8:16:0:o:third_party/oldschool-pc-fonts/ibm_vga_8x16.wermfont',
+	'26:230: 128: 9:16:0:o:third_party/oldschool-pc-fonts/ibm_vga_9x16.wermfont',
+	'26:230: 128: 8:20:0:o:third_party/oldschool-pc-fonts/dos_v_ibm_8x19.wermfont',
+	'26:230: 128: 8:20:0:o:third_party/oldschool-pc-fonts/cl_stringray_8x19.wermfont',
+	'26:250:1024:10:20:0:o:third_party/ayu/jfdot_10x20.wermfont',
+	'26:245: 128:12:20:0:o:third_party/oldschool-pc-fonts/ibm_xga_ai_12x20.wermfont',
+	'26:230: 128:12:24:0:o:third_party/oldschool-pc-fonts/ibm_xga_ai_12x23.wermfont',
+	'26:230: 128:12:32:0:o:third_party/oldschool-pc-fonts/dos_v_re_12x30.wermfont',
+	'26:250:2048: 8:16:0:u:third_party/unifont-16.0.04/font/precompiled/unifont_all-16.0.04.hex',
 );
 
 sub procfnt {
-	my ($bgbrig, $fgbrig, $td, $h, $upw, $srfi) = split ':', $_[0];
-	my ($w) = $srfi =~ /_([0-9]+)x[0-9]+[.]wermfont$/;
+	$_[0] =~ s/ //g;
+	my ($bgbrig, $fgbrig, $td, $w, $h, $upw, $ffmt, $srfi) = split ':', $_[0];
 	my $gcnt = 0;
 	my @px;
-	my $mbit = 1;
-	my $xof = 0;
 	my $yof = 0;
 
 	for (1..($td * $td)) { push @px, 0; }
@@ -53,7 +53,7 @@ sub procfnt {
 	# font header, with fields:
 	#	narrow glyph width		1 byte
 	#	glyph height			1 byte
-	#	glyph count			2 bytes
+	#	glyph count			3 bytes
 	#	texture width and height	2 bytes, one number
 	#	background brightness		1 byte
 	#	foreground brightness		1 byte
@@ -69,28 +69,86 @@ sub procfnt {
 
 	open(my $fontsrc, '<', $srfi) or die "open: $!";
 
-	my $bits;
-	my $isbitline;
-	my $nextline = sub {
-		$bits = <$fontsrc>;
-		chomp $bits;
-		$isbitline = ($bits =~ /^[o.]+$/);
-	};
+	my ($startcop, $applybitline);
+	my ($cop, $pixwd);
+	my $tdatof;
+	my $mbit = 1;
+	if ($ffmt eq q[o]) {
+		my $bits;
+		my $isbitline;
+		my $nextline = sub {
+			$bits = <$fontsrc>;
+			chomp $bits;
+			$isbitline = ($bits =~ /^[o.]+$/);
+		};
+		$nextline->();
+		$startcop = sub {
+			$bits or return 0;
+
+			!$isbitline or die "unexpected bitline";
+			($cop, $pixwd) = $bits =~ /^([a-f0-9]+) ([0-9]+)$/;
+
+			return 1;
+		};
+		$applybitline = sub {
+			$nextline->();
+			$isbitline or return 0;
+
+			for my $x (0..length($bits)-1) {
+				if ('o' eq substr($bits, $x, 1) eq 'o') {
+					$px[$tdatof + $x] |= $mbit;
+				}
+			}
+
+			return 1;
+		};
+	}
+	elsif ($ffmt eq q[u]) {
+		my $ubts;
+		my $btof;
+		my $hexperrow;
+		$startcop = sub {
+			my $uline = <$fontsrc>;
+			chomp $uline;
+			$uline or return 0;
+			($cop, $ubts) = $uline =~ /(.*):(.*)/ or die;
+			$btof = 0;
+			$hexperrow = length($ubts) / $h;
+			$pixwd = $hexperrow * 4;
+			return 1;
+		};
+		$applybitline = sub {
+			$btof < length($ubts) or return 0;
+
+			my $libits = hex substr($ubts, $btof, $hexperrow);
+			$btof += $hexperrow;
+
+			my $mask = 1 << $pixwd;
+
+			for my $x (0..$pixwd-1) {
+				$mask >>= 1;
+				$px[$tdatof + $x] |= $mbit if ($libits & $mask);
+			}
+
+			return 1;
+		};
+	}
+	else {
+		die "Invalid format for font: $ffmt\n";
+	}
 
 	# glyph list data, the glyph metadata, as a list of integral byte values
 	my @glisd;
 
-	$nextline->();
-	while ($bits) {
+	my $xof = 0;
+	while ($startcop->()) {
 		$mbit <= 0x80	or die "insufficient space for the glyphs";
-		!$isbitline	or die "unexpected bitline";
 
-		my ($cop, $pixwd) = $bits =~ /^([a-f0-9]+) ([0-9]+)$/;
 		my $wide = ($pixwd == $w * 2) ? 0x80 : 0x00;
 
 		$pixwd == $w	or
 		$wide		or
-		die "invalid glyph width: $pixwd, line $ginf";
+		die "invalid glyph width: $pixwd for code point: $cop in font: $srfi\n";
 
 		if ($pixwd + $xof > $td) {
 			$yof += $h;
@@ -102,20 +160,10 @@ sub procfnt {
 		}
 		$gcnt++;
 
-		my $tdatof = $yof * $td + $xof;
-		$unlin = 0;
-		for (my $y = 0; ; $y++, $tdatof += $td) {
-			$nextline->();
-			$isbitline or last;
-			$y < $h or die "glyph too tall for this font";
-			for my $x (0..length($bits)-1) {
-				if ('o' eq substr($bits, $x, 1) eq 'o') {
-					$px[$tdatof + $x] |= $mbit;
-				}
-			}
-		}
+		$tdatof = $yof * $td + $xof;
+		while ($applybitline->()) { $tdatof += $td; }
 
-		$cop = hex $cop;
+		$cop = hex($cop);
 		push @glisd, $cop>>16 | $wide;
 		push @glisd, $cop>>8;
 		push @glisd, $cop;
@@ -140,6 +188,7 @@ sub procfnt {
 
 	$writebyte->($w			);
 	$writebyte->($h			);
+	$writebyte->($gcnt	>> 16	);
 	$writebyte->($gcnt	>> 8	);
 	$writebyte->($gcnt		);
 	$writebyte->($td	>> 8	);
@@ -205,14 +254,14 @@ sub mtime {
 my $fntime = 0x7fffffff;
 my @fnsrcmt;
 
-for $f (qw[gen/charwi gen/font.c]) {
+for my $f (qw[gen/charwi gen/font.c]) {
 	my $mt = mtime $f;
 	$mt < $fntime and $fntime = $mt;
 }
 
-for $w (@wfns) {
-	my @fs = split(':', $w);
-	my $f = $fs[5];
+for my $wf (@wfns) {
+	my @fs = split(':', $wf);
+	my $f = $fs[7];
 	push @fnsrcmt, mtime($f);
 }
 
@@ -227,7 +276,7 @@ if ($wftime > $fntime) {
 	print $fntc qq[#include "http.h"\n];
 	print $fntc qq[#include <stdlib.h>\n];
 
-	for $f (@wfns) { procfnt $f }
+	for my $f (@wfns) { procfnt $f }
 
 	print		$fntc qq[int fontcnt(void) { return $fontcnt; }\n];
 

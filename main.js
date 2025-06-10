@@ -1319,7 +1319,8 @@ function set_font(ndx)
 		bar = new Uint8Array(ab);
 		gwid	= bar[bi++];
 		ghei	= bar[bi++];
-		gcon	= bar[bi++]<<8
+		gcon	= bar[bi++]<<16
+			| bar[bi++]<<8
 			| bar[bi++];
 		ftd	= bar[bi++]<<8
 			| bar[bi++];
