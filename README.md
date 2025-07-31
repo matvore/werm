@@ -86,7 +86,7 @@ This is not an officially supported Google product.
 
    [Debian] libmd4c-dev libmd4c-html0-dev libssl-dev libfido2-dev pkg-config
 
-   [Arch] core/make extra/md4c
+   [Arch] core/make extra/md4c extra/libfido2
 
  * On your local or remote Linux machine, clone this repo to a convenient place
    and build. I recommend `~/.local/werm/src`:
