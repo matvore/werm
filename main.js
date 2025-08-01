@@ -37,8 +37,8 @@ var	t, tel, gl, gwid, ghei, cops, ftd, ftx, vbu, shpr, dw, dh,
 	cli0,
 	tex0,
 	mask,
-	maxbri,
-	bridoff,
+	maxbri, pendmaxbri = 1,
+	bridof, pendbridof = 0,
 	clicoor,
 	clipixw,
 	clipixh,
@@ -151,6 +151,14 @@ function term4cli()
 
 var curfnt = 4;
 
+function setbrightness(maxb, doff)
+{
+	if (maxb >= 0)	pendmaxbri = maxb;
+	if (doff >= 0)	pendbridof = doff;
+	if (maxbri)	gl.uniform1f(maxbri, pendmaxbri);
+	if (bridof)	gl.uniform1f(bridof, pendbridof);
+}
+
 function init_gl()
 {
 	if (gl && document.hidden)		return;
@@ -173,6 +181,162 @@ function init_gl()
 
 	document.body.appendChild(tel);
 	gl = tel.getContext('webgl2', {preserveDrawingBuffer: true});
+	vshdr = gl.createShader(gl.VERTEX_SHADER);
+	fshdr = gl.createShader(gl.FRAGMENT_SHADER);
+	shpr = gl.createProgram();
+	gl.shaderSource(vshdr,
+`#version 300 es
+precision mediump float;
+
+in	vec2	clicoor;
+uniform	vec2	cli0;
+uniform	vec2	cliclsz;
+uniform vec2	celpxsz;
+uniform	vec2	tex0;
+uniform float	texpxsz;
+out 	vec2	texcoor;
+
+void main()
+{
+	vec2	celloff = clicoor * celpxsz;
+
+	gl_Position	= vec4(	celloff * cliclsz + cli0, 0, 1);
+
+	texcoor		=	celloff * texpxsz + tex0 * texpxsz;
+}
+`);
+		gl.shaderSource(fshdr,
+`#version 300 es
+precision mediump float;
+
+uniform	int	glymode;
+uniform	int	mask;
+uniform	float	maxbri;
+uniform	float	bridof;
+uniform	vec3	bgcolor;
+uniform	vec3	fgcolor;
+uniform	vec2	tex0;
+in	vec2	texcoor;
+out	vec4	fragColor;
+uniform	vec2	celpxsz;
+uniform	float	texpxsz;
+
+uniform	lowp	usampler2D tex;
+
+int texp(int xof)
+{
+	float xco = texcoor.x + float(xof) * texpxsz;
+	int pd;
+
+	pd = xco<tex0.x*texpxsz	? 0
+				: int(texture(tex, vec2(xco, texcoor.y)).r);
+
+	return mask & pd;
+}
+
+int hshp(int xof)
+{
+	int hx, hy, bs, bc = 0;
+
+	hx = int(texcoor.x / texpxsz) + xof;
+	hy = int(texcoor.y / texpxsz);
+
+	if (hx < 0)	return 0;
+	if (hx == 0)	return hy & 1;
+	if (hy == 0)	return hx & 1;
+	if (hx >= int(celpxsz.x) - 1)	return ~hy & 1;
+	if (hy >= int(celpxsz.y) - 1)	return ~hx & 1;
+	hx >>= 1;
+	hy >>= 1;
+	bs = mask * 97 ^ hx * 2957 ^ hy * 4129;
+	bs &= 0x7f;
+	while (bs != 0) {
+		bs &= (bs - 1);
+		bc++;
+	}
+	return (bc >= 4) ? 1 : 0;
+}
+
+int renp(int xof) { return mask >= 0 ? texp(xof) : hshp(xof); }
+
+void main()
+{
+	vec3 acfg, acbg, fragrgb;
+	int faint = 0;
+	vec2 texoff = texcoor / texpxsz - tex0;
+	vec2 atten = mod(texoff, 1.0);
+
+	if (0 != (glymode & ATTR_REVERSE)) {
+		acfg = bgcolor;
+		acbg = fgcolor;
+	}
+	else {
+		acbg = bgcolor;
+		acfg = fgcolor;
+	}
+
+	if (	0 != (glymode&ATTR_UNDERLINE)
+	&&	texcoor.y/texpxsz - tex0.y >= celpxsz.y - 1.05
+	) {
+		fragrgb = acfg;
+		if (0 == renp(0)) faint = 1;
+	} else if (0 != renp(0)) {
+		fragrgb = acfg;
+	} else if (0 != (ATTR_BOLD & glymode) && 0 != renp(-1)) {
+		fragrgb = acfg * 0.8 + acbg * 0.2;
+	} else {
+		fragrgb = acbg;
+	}
+
+	faint |= glymode & ATTR_FAINT;
+	if (0 != faint) fragrgb *= 0.8;
+	fragrgb *= maxbri - bridof*sqrt(dot(atten, atten));
+	fragColor = vec4(min(fragrgb, 1.0), 1.0);
+}
+`);
+	gl.compileShader		(	vshdr);
+	gl.compileShader		(	fshdr);
+	gl.attachShader			(shpr,	vshdr);
+	gl.attachShader			(shpr,	fshdr);
+	gl.linkProgram			(shpr);
+	gl.useProgram			(shpr);
+
+	clicoor	= gl.getAttribLocation	(shpr, "clicoor");
+	bgcolor = gl.getUniformLocation	(shpr, "bgcolor");
+	fgcolor = gl.getUniformLocation	(shpr, "fgcolor");
+	glymode = gl.getUniformLocation	(shpr, "glymode");
+	texpxsz = gl.getUniformLocation	(shpr, "texpxsz");
+	cliclsz	= gl.getUniformLocation	(shpr, "cliclsz");
+	celpxsz	= gl.getUniformLocation	(shpr, "celpxsz");
+	tex0	= gl.getUniformLocation	(shpr, "tex0");
+	cli0	= gl.getUniformLocation	(shpr, "cli0");
+	mask	= gl.getUniformLocation	(shpr, "mask");
+	maxbri	= gl.getUniformLocation	(shpr, "maxbri");
+	bridof	= gl.getUniformLocation	(shpr, "bridof");
+
+	setbrightness();
+
+	vbu = gl.createBuffer();
+	gl.bindBuffer(	gl.ARRAY_BUFFER, vbu);
+	gl.bufferData(	gl.ARRAY_BUFFER,
+			new Float32Array([
+				0.0, 1.0,
+				1.0, 1.0,
+				1.0, 0.0,
+				0.0, 0.0,
+			]),
+			gl.STATIC_DRAW);
+	gl.enableVertexAttribArray(	clicoor);
+	gl.vertexAttribPointer(		clicoor			,
+				/*size		*/ 2		,
+				/*type		*/ gl.FLOAT	,
+				/*normalize	*/ false	,
+				/*stride	*/ 0		,
+				/*offset	*/ 0		);
+
+	gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+	gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
 
 	set_font(curfnt);
 }
@@ -255,8 +419,6 @@ function Xdrawglyph(trm, scri, c, r, selrev)
 	if (selrev && selected(trm, c, r)) eglymod ^= ATTR_REVERSE;
 
 	gl.uniform1i	(mask,		maskval);
-	gl.uniform1f	(maxbri,	window.maxbright	|| 1.0);
-	gl.uniform1f	(bridoff,	window.brightdropoff	|| 0.0);
 	gl.uniform1i	(glymode,	eglymod);
 	gl.uniform2f	(cli0,		-1 + c*gwid*clipixw,
 					+1 - r*ghei*clipixh);
@@ -266,7 +428,6 @@ function Xdrawglyph(trm, scri, c, r, selrev)
 	gl.uniform3fv	(fgcolor,	unpackclr(fld(scr,scri+GLYPH_FG), rv));
 	gl.uniform3fv	(bgcolor,	unpackclr(fld(scr,scri+GLYPH_BG), rv));
 
-	gl.bindBuffer(gl.ARRAY_BUFFER, vbu);
 	gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 }
 
@@ -289,7 +450,6 @@ function Xdrawrect(col, x, y, w, h)
 	gl.uniform2f	(celpxsz,	w, h);
 	gl.uniform3fv	(bgcolor,	unpackclr(col));
 
-	gl.bindBuffer(gl.ARRAY_BUFFER, vbu);
 	gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 }
 
@@ -1383,9 +1543,9 @@ function set_font(ndx)
 			console.log(	'texture data wrong sz=%d, ftd=%d:',
 					bar.length, ftd);
 		}
+		if (ftx) gl.deleteTexture(ftx);
 		ftx = gl.createTexture();
 
-		gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
 		gl.bindTexture(gl.TEXTURE_2D, ftx);
 
 		gl.texImage2D(
@@ -1403,158 +1563,6 @@ function set_font(ndx)
 		gl.texParameteri(
 			gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
 
-		vshdr = gl.createShader(gl.VERTEX_SHADER);
-		fshdr = gl.createShader(gl.FRAGMENT_SHADER);
-		shpr = gl.createProgram();
-		gl.shaderSource(vshdr,
-`#version 300 es
-precision mediump float;
-
-in	vec2	clicoor;
-uniform	vec2	cli0;
-uniform	vec2	cliclsz;
-uniform vec2	celpxsz;
-uniform	vec2	tex0;
-uniform float	texpxsz;
-out 	vec2	texcoor;
-
-void main()
-{
-	vec2	celloff = clicoor * celpxsz;
-
-	gl_Position	= vec4(	celloff * cliclsz + cli0, 0, 1);
-
-	texcoor		=	celloff * texpxsz + tex0 * texpxsz;
-}
-`);
-		gl.shaderSource(fshdr,
-`#version 300 es
-precision mediump float;
-
-uniform	int	glymode;
-uniform	int	mask;
-uniform	float	maxbri;
-uniform	float	bridoff;
-uniform	vec3	bgcolor;
-uniform	vec3	fgcolor;
-uniform	vec2	tex0;
-in	vec2	texcoor;
-out	vec4	fragColor;
-uniform	vec2	celpxsz;
-uniform	float	texpxsz;
-
-uniform	lowp	usampler2D tex;
-
-int texp(int xof)
-{
-	float xco = texcoor.x + float(xof) * texpxsz;
-	int pd;
-
-	pd = xco<tex0.x*texpxsz	? 0
-				: int(texture(tex, vec2(xco, texcoor.y)).r);
-
-	return mask & pd;
-}
-
-int hshp(int xof)
-{
-	int hx, hy, bs, bc = 0;
-
-	hx = int(texcoor.x / texpxsz) + xof;
-	hy = int(texcoor.y / texpxsz);
-
-	if (hx < 0)	return 0;
-	if (hx == 0)	return hy & 1;
-	if (hy == 0)	return hx & 1;
-	if (hx >= int(celpxsz.x) - 1)	return ~hy & 1;
-	if (hy >= int(celpxsz.y) - 1)	return ~hx & 1;
-	hx >>= 1;
-	hy >>= 1;
-	bs = mask * 97 ^ hx * 2957 ^ hy * 4129;
-	bs &= 0x7f;
-	while (bs != 0) {
-		bs &= (bs - 1);
-		bc++;
-	}
-	return (bc >= 4) ? 1 : 0;
-}
-
-int renp(int xof) { return mask >= 0 ? texp(xof) : hshp(xof); }
-
-void main()
-{
-	vec3 acfg, acbg, fragrgb;
-	int faint = 0;
-	vec2 texoff = texcoor / texpxsz - tex0;
-	vec2 atten = mod(texoff, 1.0);
-
-	if (0 != (glymode & ATTR_REVERSE)) {
-		acfg = bgcolor;
-		acbg = fgcolor;
-	}
-	else {
-		acbg = bgcolor;
-		acfg = fgcolor;
-	}
-
-	if (	0 != (glymode&ATTR_UNDERLINE)
-	&&	texcoor.y/texpxsz - tex0.y >= celpxsz.y - 1.05
-	) {
-		fragrgb = acfg;
-		if (0 == renp(0)) faint = 1;
-	} else if (0 != renp(0)) {
-		fragrgb = acfg;
-	} else if (0 != (ATTR_BOLD & glymode) && 0 != renp(-1)) {
-		fragrgb = acfg * 0.8 + acbg * 0.2;
-	} else {
-		fragrgb = acbg;
-	}
-
-	faint |= glymode & ATTR_FAINT;
-	if (0 != faint) fragrgb *= 0.8;
-	fragrgb *= maxbri - bridoff*sqrt(dot(atten, atten));
-	fragColor = vec4(min(fragrgb, 1.0), 1.0);
-}
-`);
-		gl.compileShader		(	vshdr);
-		gl.compileShader		(	fshdr);
-		gl.attachShader			(shpr,	vshdr);
-		gl.attachShader			(shpr,	fshdr);
-		gl.linkProgram			(shpr);
-		gl.useProgram			(shpr);
-
-		clicoor	= gl.getAttribLocation	(shpr, "clicoor");
-		bgcolor = gl.getUniformLocation	(shpr, "bgcolor");
-		fgcolor = gl.getUniformLocation	(shpr, "fgcolor");
-		glymode = gl.getUniformLocation	(shpr, "glymode");
-		texpxsz = gl.getUniformLocation	(shpr, "texpxsz");
-		cliclsz	= gl.getUniformLocation	(shpr, "cliclsz");
-		celpxsz	= gl.getUniformLocation	(shpr, "celpxsz");
-		tex0	= gl.getUniformLocation	(shpr, "tex0");
-		cli0	= gl.getUniformLocation	(shpr, "cli0");
-		mask	= gl.getUniformLocation	(shpr, "mask");
-		maxbri	= gl.getUniformLocation	(shpr, "maxbri");
-		bridoff	= gl.getUniformLocation	(shpr, "bridoff");
-
-		vbu = gl.createBuffer();
-		gl.bindBuffer(	gl.ARRAY_BUFFER, vbu);
-		gl.bufferData(	gl.ARRAY_BUFFER,
-				new Float32Array([
-					0.0, 1.0,
-					1.0, 1.0,
-					1.0, 0.0,
-					0.0, 0.0,
-				]),
-				gl.STATIC_DRAW);
-		gl.enableVertexAttribArray(	clicoor);
-		gl.vertexAttribPointer(		clicoor			,
-					/*size		*/ 2		,
-					/*type		*/ gl.FLOAT	,
-					/*normalize	*/ false	,
-					/*stride	*/ 0		,
-					/*offset	*/ 0		);
-
-		gl.bindBuffer(	gl.ARRAY_BUFFER, null);
 		readywindow();
 		adjust();
 		display('');
