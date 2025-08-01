@@ -37,6 +37,8 @@ var	t, tel, gl, gwid, ghei, cops, ftd, ftx, vbu, shpr, dw, dh,
 	cli0,
 	tex0,
 	mask,
+	maxbri,
+	bridoff,
 	clicoor,
 	clipixw,
 	clipixh,
@@ -87,8 +89,8 @@ function notice(str)
 
 function imposetsize()
 {
-	var	rc = 0 | dh/ghei,
-		cc = 0 | dw/gwid;
+	var	rc = 0 | dh/ghei/scale('cy'),
+		cc = 0 | dw/gwid/scale('cx');
 
 	/* This means ghei or gwid is not set */
 	if (!rc || !cc) return;
@@ -99,18 +101,33 @@ function imposetsize()
 		cc.toString().padStart(4, '0')	);
 }
 
+window.customscalex ||= 1;
+window.customscaley ||= 1;
+
+function scale(type)
+{
+	var dpr = window.devicePixelRatio;
+
+	switch (type || 'l') {
+	case 'lx':	return dpr /	window.customscalex;
+	case 'ly':	return dpr /	window.customscaley;
+	case 'cx':	return		window.customscalex;
+	case 'cy':	return		window.customscaley;
+	case 'p':	return dpr;
+	}
+ }
+
 function adjust()
 {
-	var rat = window.devicePixelRatio;
 	var tst = getComputedStyle(tel);
-	dw = Math.round(rat * parseFloat(tst.width));
-	dh = Math.round(rat * parseFloat(tst.height));
+	dw = Math.round(scale('p') * parseFloat(tst.width));
+	dh = Math.round(scale('p') * parseFloat(tst.height));
 
-	clipixw		= 2/dw	;
-	clipixh		= 2/dh	;
+	clipixw		= 2/dw*scale('cx')	;
+	clipixh		= 2/dh*scale('cy')	;
 
-	tel.width	= dw	;
-	tel.height	= dh	;
+	tel.width	= dw			;
+	tel.height	= dh			;
 
 	gl.uniform2f	(cliclsz,	clipixw,	-clipixh);
 	gl.uniform1f	(texpxsz,	+1/ftd);
@@ -121,6 +138,7 @@ function adjust()
 
 	imposetsize();
 	if (barrdiv) updatebarrdivcw();
+	redraw(t);
 }
 
 function term4cli()
@@ -237,6 +255,8 @@ function Xdrawglyph(trm, scri, c, r, selrev)
 	if (selrev && selected(trm, c, r)) eglymod ^= ATTR_REVERSE;
 
 	gl.uniform1i	(mask,		maskval);
+	gl.uniform1f	(maxbri,	window.maxbright	|| 1.0);
+	gl.uniform1f	(bridoff,	window.brightdropoff	|| 0.0);
 	gl.uniform1i	(glymode,	eglymod);
 	gl.uniform2f	(cli0,		-1 + c*gwid*clipixw,
 					+1 - r*ghei*clipixh);
@@ -524,6 +544,8 @@ function cookev(e)
 function updaterepboxs(sz, newpo, o, st, en)
 {
 	var bs = repeat_boxes;
+	var scx = scale('lx');
+	var scy = scale('ly');
 
 	if (en === undefined) en = REPEAT_BOX_CNT;
 
@@ -558,8 +580,8 @@ function updaterepboxs(sz, newpo, o, st, en)
 
 		if (!newpo && !sz) return;
 
-		cw =		term(t,cw) / window.devicePixelRatio;
-		ch =		term(t,ch) / window.devicePixelRatio;
+		cw =		term(t,cw) / scx;
+		ch =		term(t,ch) / scy;
 		cx = curs_x(	term(t,curs));
 		cy = curs_y(	term(t,curs));
 
@@ -1198,14 +1220,14 @@ function set_default_font(ndx)
 	set_default_font = function() {};
 }
 
-function coorclam(evcoor, lim)
+function coorclam(sc, evcoor, lim)
 {
-	evcoor *= window.devicePixelRatio;
+	evcoor *= scale(sc);
 	return Math.max(0, Math.min(fld(t,lim), 0 | evcoor));
 }
 
-function evrow(e) { return coorclam(e.clientY/ghei, term_row) }
-function evcol(e) { return coorclam(e.clientX/gwid, term_col) }
+function evrow(e) { return coorclam('ly', e.clientY/ghei, term_row) }
+function evcol(e) { return coorclam('lx', e.clientX/gwid, term_col) }
 
 function ecoor(e) { return `${evcol(e)}:${evrow(e)}` }
 
@@ -1227,7 +1249,7 @@ function readywindow()
 	if (term_ready) return;
 	term_ready=1;
 
-	window.onresize = function(e) {	adjust(); redraw(t); };
+	window.onresize = adjust;
 	window.onblur = function(e)
 	{
 		term(t,mode) &= ~MODE_FOCUSED;
@@ -1409,15 +1431,17 @@ void main()
 `#version 300 es
 precision mediump float;
 
-uniform int	glymode;
+uniform	int	glymode;
 uniform	int	mask;
-uniform vec3	bgcolor;
-uniform vec3	fgcolor;
+uniform	float	maxbri;
+uniform	float	bridoff;
+uniform	vec3	bgcolor;
+uniform	vec3	fgcolor;
 uniform	vec2	tex0;
 in	vec2	texcoor;
 out	vec4	fragColor;
-uniform vec2	celpxsz;
-uniform float	texpxsz;
+uniform	vec2	celpxsz;
+uniform	float	texpxsz;
 
 uniform	lowp	usampler2D tex;
 
@@ -1455,24 +1479,20 @@ int hshp(int xof)
 	return (bc >= 4) ? 1 : 0;
 }
 
-int renp(int xof)
-{
-	int p = mask >= 0 ? texp(xof) : hshp(xof);
-
-	if (p != 0) p = 1;
-
-	return p;
-}
+int renp(int xof) { return mask >= 0 ? texp(xof) : hshp(xof); }
 
 void main()
 {
-	vec3 acfg, acbg;
+	vec3 acfg, acbg, fragrgb;
 	int faint = 0;
+	vec2 texoff = texcoor / texpxsz - tex0;
+	vec2 atten = mod(texoff, 1.0);
 
 	if (0 != (glymode & ATTR_REVERSE)) {
 		acfg = bgcolor;
 		acbg = fgcolor;
-	} else {
+	}
+	else {
 		acbg = bgcolor;
 		acfg = fgcolor;
 	}
@@ -1480,22 +1500,20 @@ void main()
 	if (	0 != (glymode&ATTR_UNDERLINE)
 	&&	texcoor.y/texpxsz - tex0.y >= celpxsz.y - 1.05
 	) {
-		fragColor = vec4(acfg, 1.0);
+		fragrgb = acfg;
 		if (0 == renp(0)) faint = 1;
 	} else if (0 != renp(0)) {
-		fragColor = vec4(acfg, 1.0);
+		fragrgb = acfg;
 	} else if (0 != (ATTR_BOLD & glymode) && 0 != renp(-1)) {
-		fragColor = vec4(acfg * 0.8 + acbg * 0.2, 1.0);
+		fragrgb = acfg * 0.8 + acbg * 0.2;
 	} else {
-		fragColor = vec4(acbg, 1.0);
+		fragrgb = acbg;
 	}
 
 	faint |= glymode & ATTR_FAINT;
-	if (0 != faint) {
-		fragColor.r *= 0.8;
-		fragColor.g *= 0.8;
-		fragColor.b *= 0.8;
-	}
+	if (0 != faint) fragrgb *= 0.8;
+	fragrgb *= maxbri - bridoff*sqrt(dot(atten, atten));
+	fragColor = vec4(min(fragrgb, 1.0), 1.0);
 }
 `);
 		gl.compileShader		(	vshdr);
@@ -1515,6 +1533,8 @@ void main()
 		tex0	= gl.getUniformLocation	(shpr, "tex0");
 		cli0	= gl.getUniformLocation	(shpr, "cli0");
 		mask	= gl.getUniformLocation	(shpr, "mask");
+		maxbri	= gl.getUniformLocation	(shpr, "maxbri");
+		bridoff	= gl.getUniformLocation	(shpr, "bridoff");
 
 		vbu = gl.createBuffer();
 		gl.bindBuffer(	gl.ARRAY_BUFFER, vbu);
@@ -1537,7 +1557,6 @@ void main()
 		gl.bindBuffer(	gl.ARRAY_BUFFER, null);
 		readywindow();
 		adjust();
-		redraw(t);
 		display('');
 	};
 	fr.send(null);
@@ -1609,7 +1628,7 @@ function set_barrier_dig(code)
 
 function updatebarrdivcw()
 {
-	var cw = term(t,cw) / window.devicePixelRatio;
+	var cw = term(t,cw) / scale('lx');
 	barrdiv.style.left	= `${cw	* barrdiv.termcols}px`;
 	barrdiv.style.width	= `${cw}px`; 
 }
