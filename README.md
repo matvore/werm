@@ -316,15 +316,24 @@ These and other functions are defined in `$WERMSRCDIR/util/logview`
 
 ## Passkey authentication
 
-Werm has preliminary passkey support, which allows exposing the Werm server to
-an insecure or public network, and authenticating with a security key or other
-passkey mechanisms, depending on platform. This also means you do not need to
-configure SSH port forwarding or use SSH at all.
+Werm has preliminary passkey support. Use at your own risk. Werm client code
+(Javascript) and your browser will activate this feature when
+`$WERMRELYINGPARTY` is set and one of the following is true:
 
-Werm does **not** include an HTTPS server so you will need to put the server
-behind an SSL reverse proxy with a separate tool such as Nginx. Werm client
-code (Javascript) and your browser will refuse to use this feature unless the
-server is accessed via https.
+1. The server is accessed via https. Werm does **not** include an HTTPS server
+   so you will need to put the server behind an SSL reverse proxy with a
+   separate tool such as Nginx.
+
+   This allows exposing the Werm server to an insecure or public network, and
+   authenticating with a security key or other passkey mechanism. In this case,
+   you do not need to configure SSH port forwarding or use SSH at all to acceess
+   the remote system.
+
+2. `$WERMRELYINGPARTY` is `localhost`, and the URL through which the page is
+   accessed is `http://localhost` with an optional port number. This allows
+   accessing Werm (running the browser) from a multi-user system, while
+   preventing unauthorized users from accessing the shell by simply visiting
+   `localhost:<port>`.
 
 ### Passkey environment variables
 

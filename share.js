@@ -43,7 +43,8 @@ function endptid()
 	/* Get a unique session ID. We can't use endpoint ID because that value
 	is passed to other clients to identify who is connected to a session. */
 	var bar, coo, exd;
-	if (location.protocol != 'https:')		return;
+	if (location.protocol != 'https:' && location.hostname != 'localhost')
+		return;
 	if (document.cookie.match(/\bwermsession=/))	return;
 
 	bar = new Uint8Array(16);
