@@ -190,7 +190,7 @@ mnemonics and the long-form name used by the JS Event API.
    lost. Terminate such a shell with Ctrl+D or the `exit` command before closing
    the tab.
 
- * To add or remove macros, add it to the `macro_map` in `index.html` or a
+ * To add or remove macros, add it to the `macro_map` in `macros.js` or a
    profile's JS code (see [PROFILES](#profiles)).
 
    The left-hand side is the macro shortcut or mnemonic.
@@ -467,7 +467,7 @@ re-generate the `.js` file *again* and show it, rather than simply show what
 was really loaded and in effect for the page. (FIXME: this is not ideal)
 
 The Javascript generally takes the form of extra macro maps put in the map at
-window.extended_macros, which look like the `macro_map` in `index.html`, e.g.:
+window.extended_macros, which look like the `macro_map` in `macros.js`, e.g.:
 
 ```
 $ cat foo.js
