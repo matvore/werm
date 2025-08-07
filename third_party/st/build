@@ -10,6 +10,7 @@ cc 	-g3					\
 	-Werror=int-conversion			\
 	-Werror=unused-variable			\
 	-Wno-return-type			\
+	-Wno-return-mismatch			\
 	-D_POSIX_C_SOURCE=200809L		\
 	-D_XOPEN_SOURCE=600			\
 	-DVERSION='"0.9"'			\
