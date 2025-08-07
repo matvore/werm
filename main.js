@@ -2,6 +2,7 @@
 #include "third_party/st/tmeng"
 #include "third_party/st/tmengui"
 #include "tmconst"
+#include "shaders.js"
 
 window["extended_macros"] = {}
 
@@ -30,20 +31,14 @@ function Xosc52copy(trm, deq, byti)
 	navigator.clipboard.writeText(s);
 }
 
-var	t, tel, gl, gwid, ghei, cops, ftd, ftx, vbu, shpr, dw, dh,
+var	t, tel, gl, gwid, ghei, cops, ftd, ftx, vbu, dw, dh,
 	fontfgrgb,
 	fontbgrgb,
 	selecting, mdownstam,
-	cli0,
-	tex0,
-	mask,
-	maxbri, pendmaxbri = 1,
-	bridof, pendbridof = 0,
-	clicoor,
+	pendmaxbri = 1,
+	pendbridof = 0,
 	clipixw,
 	clipixh,
-	celpxsz,
-	texpxsz,
 	log_matching,
 	log_send,
 	log_display,
@@ -59,7 +54,7 @@ var	t, tel, gl, gwid, ghei, cops, ftd, ftx, vbu, shpr, dw, dh,
 	params, dead_key_hist, keep_row_ttl, row_ttl, locked_ttl,
 	repeat_cnt, repsignal, repeat_boxes = [], macro_map,
 	barrier_dig = [], barrdiv, font_key,
-	got_key_up = false, matching = [], macro_winpos, notitout;
+	got_key_up = false, matching = [], macro_winpos, notitout, shsymbs;
 
 function notice(str)
 {
@@ -129,8 +124,8 @@ function adjust()
 	tel.width	= dw			;
 	tel.height	= dh			;
 
-	gl.uniform2f	(cliclsz,	clipixw,	-clipixh);
-	gl.uniform1f	(texpxsz,	+1/ftd);
+	gl.uniform2f(shsymbs.u.cliclsz, clipixw, -clipixh);
+	gl.uniform1f(shsymbs.u.texpxsz, +1/ftd);
 
 	gl.viewport(0, 0, dw, dh);
 	gl.clearColor(0, 0, 0, 1);
@@ -155,8 +150,9 @@ function setbrightness(maxb, doff)
 {
 	if (maxb >= 0)	pendmaxbri = maxb;
 	if (doff >= 0)	pendbridof = doff;
-	if (maxbri)	gl.uniform1f(maxbri, pendmaxbri);
-	if (bridof)	gl.uniform1f(bridof, pendbridof);
+	if (!shsymbs)	return;
+	gl.uniform1f(shsymbs.u.maxbri, pendmaxbri);
+	gl.uniform1f(shsymbs.u.bridof, pendbridof);
 }
 
 function init_gl()
@@ -181,138 +177,7 @@ function init_gl()
 
 	document.body.appendChild(tel);
 	gl = tel.getContext('webgl2', {preserveDrawingBuffer: true});
-	vshdr = gl.createShader(gl.VERTEX_SHADER);
-	fshdr = gl.createShader(gl.FRAGMENT_SHADER);
-	shpr = gl.createProgram();
-	gl.shaderSource(vshdr,
-`#version 300 es
-precision mediump float;
-
-in	vec2	clicoor;
-uniform	vec2	cli0;
-uniform	vec2	cliclsz;
-uniform vec2	celpxsz;
-uniform	vec2	tex0;
-uniform float	texpxsz;
-out 	vec2	texcoor;
-
-void main()
-{
-	vec2	celloff = clicoor * celpxsz;
-
-	gl_Position	= vec4(	celloff * cliclsz + cli0, 0, 1);
-
-	texcoor		=	celloff * texpxsz + tex0 * texpxsz;
-}
-`);
-		gl.shaderSource(fshdr,
-`#version 300 es
-precision mediump float;
-
-uniform	int	glymode;
-uniform	int	mask;
-uniform	float	maxbri;
-uniform	float	bridof;
-uniform	vec3	bgcolor;
-uniform	vec3	fgcolor;
-uniform	vec2	tex0;
-in	vec2	texcoor;
-out	vec4	fragColor;
-uniform	vec2	celpxsz;
-uniform	float	texpxsz;
-
-uniform	lowp	usampler2D tex;
-
-int texp(int xof)
-{
-	float xco = texcoor.x + float(xof) * texpxsz;
-	int pd;
-
-	pd = xco<tex0.x*texpxsz	? 0
-				: int(texture(tex, vec2(xco, texcoor.y)).r);
-
-	return mask & pd;
-}
-
-int hshp(int xof)
-{
-	int hx, hy, bs, bc = 0;
-
-	hx = int(texcoor.x / texpxsz) + xof;
-	hy = int(texcoor.y / texpxsz);
-
-	if (hx < 0)	return 0;
-	if (hx == 0)	return hy & 1;
-	if (hy == 0)	return hx & 1;
-	if (hx >= int(celpxsz.x) - 1)	return ~hy & 1;
-	if (hy >= int(celpxsz.y) - 1)	return ~hx & 1;
-	hx >>= 1;
-	hy >>= 1;
-	bs = mask * 97 ^ hx * 2957 ^ hy * 4129;
-	bs &= 0x7f;
-	while (bs != 0) {
-		bs &= (bs - 1);
-		bc++;
-	}
-	return (bc >= 4) ? 1 : 0;
-}
-
-int renp(int xof) { return mask >= 0 ? texp(xof) : hshp(xof); }
-
-void main()
-{
-	vec3 acfg, acbg, fragrgb;
-	int faint = 0;
-	vec2 texoff = texcoor / texpxsz - tex0;
-	vec2 atten = mod(texoff, 1.0);
-
-	if (0 != (glymode & ATTR_REVERSE)) {
-		acfg = bgcolor;
-		acbg = fgcolor;
-	}
-	else {
-		acbg = bgcolor;
-		acfg = fgcolor;
-	}
-
-	if (	0 != (glymode&ATTR_UNDERLINE)
-	&&	texcoor.y/texpxsz - tex0.y >= celpxsz.y - 1.05
-	) {
-		fragrgb = acfg;
-		if (0 == renp(0)) faint = 1;
-	} else if (0 != renp(0)) {
-		fragrgb = acfg;
-	} else if (0 != (ATTR_BOLD & glymode) && 0 != renp(-1)) {
-		fragrgb = acfg * 0.8 + acbg * 0.2;
-	} else {
-		fragrgb = acbg;
-	}
-
-	faint |= glymode & ATTR_FAINT;
-	if (0 != faint) fragrgb *= 0.8;
-	fragrgb *= maxbri - bridof*sqrt(dot(atten, atten));
-	fragColor = vec4(min(fragrgb, 1.0), 1.0);
-}
-`);
-	gl.compileShader		(	vshdr);
-	gl.compileShader		(	fshdr);
-	gl.attachShader			(shpr,	vshdr);
-	gl.attachShader			(shpr,	fshdr);
-	gl.linkProgram			(shpr);
-	gl.useProgram			(shpr);
-
-	clicoor	= gl.getAttribLocation	(shpr, "clicoor");
-	bgcolor = gl.getUniformLocation	(shpr, "bgcolor");
-	fgcolor = gl.getUniformLocation	(shpr, "fgcolor");
-	glymode = gl.getUniformLocation	(shpr, "glymode");
-	texpxsz = gl.getUniformLocation	(shpr, "texpxsz");
-	cliclsz	= gl.getUniformLocation	(shpr, "cliclsz");
-	celpxsz	= gl.getUniformLocation	(shpr, "celpxsz");
-	tex0	= gl.getUniformLocation	(shpr, "tex0");
-	cli0	= gl.getUniformLocation	(shpr, "cli0");
-	mask	= gl.getUniformLocation	(shpr, "mask");
-	maxbri	= gl.getUniformLocation	(shpr, "maxbri");
-	bridof	= gl.getUniformLocation	(shpr, "bridof");
+	shsymbs = init_shaders(gl);
 
 	setbrightness();
 
@@ -326,8 +191,8 @@ void main()
 				0.0, 0.0,
 			]),
 			gl.STATIC_DRAW);
-	gl.enableVertexAttribArray(	clicoor);
-	gl.vertexAttribPointer(		clicoor			,
+	gl.enableVertexAttribArray(	shsymbs.a.clicoor);
+	gl.vertexAttribPointer(		shsymbs.a.clicoor,
 				/*size		*/ 2		,
 				/*type		*/ gl.FLOAT	,
 				/*normalize	*/ false	,
@@ -390,7 +255,7 @@ function Xdrawglyph(trm, scri, c, r, selrev)
 {
 	var cel, copd, wide, xoff, yoff, rv, eglymod,
 		scr = term(trm,scr),
-		cop = fld(scr,scri), copcou, mbit, maskval;
+		cop = fld(scr,scri), copcou, mbit, maskval, funpack, bunpack;
 
 	if (!cop) return;
 
@@ -414,19 +279,21 @@ function Xdrawglyph(trm, scri, c, r, selrev)
 	}
 
 	rv = term(trm,mode) & MODE_REVERSE;
+	funpack = unpackclr(fld(scr,scri+GLYPH_FG), rv);
+	bunpack = unpackclr(fld(scr,scri+GLYPH_BG), rv);
 
 	eglymod = fld(scr,scri+GLYPH_MODE);
 	if (selrev && selected(trm, c, r)) eglymod ^= ATTR_REVERSE;
 
-	gl.uniform1i	(mask,		maskval);
-	gl.uniform1i	(glymode,	eglymod);
-	gl.uniform2f	(cli0,		-1 + c*gwid*clipixw,
-					+1 - r*ghei*clipixh);
-	gl.uniform2f	(celpxsz,	gwid * wide,
-					ghei);
-	gl.uniform2f	(tex0,		xoff, yoff);
-	gl.uniform3fv	(fgcolor,	unpackclr(fld(scr,scri+GLYPH_FG), rv));
-	gl.uniform3fv	(bgcolor,	unpackclr(fld(scr,scri+GLYPH_BG), rv));
+	gl.uniform1i	(shsymbs.u.mask,	maskval);
+	gl.uniform1i	(shsymbs.u.glymode,	eglymod);
+	gl.uniform2f	(shsymbs.u.cli0,	-1 + c*gwid*clipixw,
+						+1 - r*ghei*clipixh);
+	gl.uniform2f	(shsymbs.u.celpxsz,	gwid * wide,
+						ghei);
+	gl.uniform2f	(shsymbs.u.tex0,	xoff, yoff);
+	gl.uniform3fv	(shsymbs.u.fgcolor,	funpack);
+	gl.uniform3fv	(shsymbs.u.bgcolor,	bunpack);
 
 	gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 }
@@ -443,12 +310,12 @@ function Xdrawrect(col, x, y, w, h)
 {
 	if (!gl) return;
 
-	gl.uniform1i	(glymode,	0);
-	gl.uniform1i	(mask,		0);
-	gl.uniform2f	(cli0,		-1 + x*clipixw,
-					+1 - y*clipixh);
-	gl.uniform2f	(celpxsz,	w, h);
-	gl.uniform3fv	(bgcolor,	unpackclr(col));
+	gl.uniform1i	(shsymbs.u.glymode,	0);
+	gl.uniform1i	(shsymbs.u.mask,	0);
+	gl.uniform2f	(shsymbs.u.cli0,	-1 + x*clipixw,
+						+1 - y*clipixh);
+	gl.uniform2f	(shsymbs.u.celpxsz,	w, h);
+	gl.uniform3fv	(shsymbs.u.bgcolor,	unpackclr(col));
 
 	gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 }
@@ -1490,8 +1357,7 @@ function set_font(ndx)
 	fr.onload = function(ev)
 	{
 		var	ab = fr.response, bar, gcon, bi = 0, cop, wide, fg, bg,
-			mbit = 0, xoff = 0, yoff = 0, gwidedwid, 	vshdr,
-									fshdr;
+			mbit = 0, xoff = 0, yoff = 0, gwidedwid;
 		if (!ab) { console.error('could not load font data'); return; }
 
 		curfnt = ndx;
